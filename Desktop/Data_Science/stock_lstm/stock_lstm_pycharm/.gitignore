@@ -2,8 +2,8 @@ py_code
 pem_file
 pycharm_project
 import_files
-*.../../../../.CFUserTextEncoding
-*.../../../../.DS_Store
+*../../../../.CFUserTextEncoding
+*../../../../.DS_Store
 *.../../../../.RData
 *.../../../../.Rapp.history
 *.../../../../.Rhistory
