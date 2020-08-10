@@ -2,133 +2,130 @@ py_code
 pem_file
 pycharm_project
 import_files
-../../../../.CFUserTextEncoding
-	../../../../.DS_Store
-	../../../../.RData
-	../../../../.Rapp.history
-	../../../../.Rhistory
-	../../../../.anaconda/
-	../../../../.astropy/
-	../../../../.aws/
-	../../../../.bash_history
-	../../../../.bash_profile
-	../../../../.bash_profile-anaconda3.bak
-	../../../../.bash_sessions/
-	../../../../.bashrc
-	../../../../.conda/
-	../../../../.condarc
-	../../../../.config/
-	../../../../.cufflinks/
-	../../../../.cups/
-	../../../../.docker/
-	../../../../.git-prompt.sh
-	../../../../.gitconfig
-	../../../../.ipynb_checkpoints/
-	../../../../.ipython/
-	../../../../.jupyter/
-	../../../../.keras/
-	../../../../.local/
-	../../../../.matplotlib/
-	../../../../.odbc.ini
-	../../../../.oracle_jre_usage/
-	../../../../.psql_history
-	../../../../.pylint.d/
-	../../../../.python_history
-	../../../../.redshiftTools/
-	../../../../.rstudio-desktop/
-	../../../../.spyder-py3/
-	../../../../.sqlworkbench/
-	../../../../.ssh/
-	../../../../.subversion/
-	../../../../.viminfo
-	../../../../.vscode/
-	../../../../.wdm/
-	../../../../.zsh_history
-	../../../../1_Python Statements.ipynb
-	../../../../2 Methods_and_Functions.ipynb
-	../../../../3_Methods_and_Functions.ipynb
-	../../../../Applications/
-	../../../.DS_Store
-	../../../.localized
-	../../../2015/
-	../../../2019_TaxReturn.pdf
-	../../../23_Northbrook_Gardens/
-	../../../AWS_AccessKeys.docx
-	../../../AWS_ssh_with_MAC.png
-	../../../Data_Science.zip
-	../../.DS_Store
-	../../Blue_Owl_Coding_Challenge/
-	../../Deep_Learning_Coursera/
-	../../Machine_Translation_Project/
-	../../NLP/
-	../../NLP3/
-	../../NLP_Results/
-	../../Voice_User_Interface/
-	../../aws/
-	../../brownlee/
-	../../certificates/
-	../../edx/
-	../../python/
-	../../python_pycharm/
-	../../reshape.pdf
-	../.DS_Store
-	../.idea/
-	../AWS_ssh_with_MAC.png
-	../SSH into AWS Ubuntu instance.docx
-	../export_files/
-	../my_aws_script.py
-	../myplot
-	../pem_file/
-	../py_code/
-	../pycharm_project/
-	.DS_Store
-	.idea/
-	__pycache__/
-	main.py
-	scheduleCron.py
-	stock_data.py
-	stockstats.py
-	../~$H into AWS Ubuntu instance.docx
-	../../stock_nn/
-	../../submit-b7add63f-d5e8-43c6-b671-6842ba9c553b.zip
-	../../submit-e1480a09-a70e-40f3-abc6-5424fbd0e804.zip
-	../../udemy/
-	../../../Data_Science_Learning.zip
-	../../../Data_Science_Learning/
-	../../../Dog_Moving/
-	../../../JamesMcL.zip
-	../../../JamesMcL/
-	../../../OneDrive-2020-07-30 (1)/
-	../../../Relocated Items
-	../../../VIZIO Separation Packet w. Options (INV).pdf
-	../../../Vizio ID Card.pdf
-	../../../clist/
-	../../../colum_mcl/
-	../../../cv/
-	../../../james_mcl_folder_082020.zip
-	../../../james_mcl_folder_082020/
-	../../../venv/
-	../../../../Documents/
-	../../../../Downloads/
-	../../../../Library/
-	../../../../Movies/
-	../../../../Music/
-	../../../../NLP POS Tagging.ipynb
-	../../../../Objects and Data Structures Assessment.ipynb
-	../../../../Pictures/
-	../../../../Public/
-	../../../../PycharmProjects/
-	../../../../RedshiftJDBC41-1.1.9.1009.jar
-	../../../../RedshiftJDBC41-1.2.16.1027.jar
-	../../../../RedshiftJDBC42-1.2.16.1027.jar
-	../../../../Spark_Test.ipynb
-	../../../../Untitled4.ipynb
-	../../../../Untitled5.ipynb
-	../../../../anaconda3/
-	../../../../file_name_james_missing.csv
-	../../../../java_error_in_pycharm.hprof
-	../../../../nltk_data/
-	../../../../projects/
-	../../../../scikit_learn_data/
-	../../../../seaborn-data/
-	../../../../testanova113.csv
+*.../../../../.CFUserTextEncoding
+*.../../../../.DS_Store
+*.../../../../.RData
+*.../../../../.Rapp.history
+*.../../../../.Rhistory
+*.../../../../.anaconda/
+*.../../../../.astropy/
+*.../../../../.aws/
+*.../../../../.bash_history
+*.../../../../.bash_profile
+*.../../../../.bash_profile-anaconda3.bak
+*.../../../../.bash_sessions/
+*.../../../../.bashrc
+*.../../../../.conda/
+*.../../../../.condarc
+*.../../../../.config/
+*.../../../../.cufflinks/
+*.../../../../.cups/
+*.../../../../.docker/
+*.../../../../.ipython/
+*.../../../../.jupyter/
+*.../../../../.keras/
+*.../../../../.local/
+*.../../../../.matplotlib/
+*.../../../../.odbc.ini
+*.../../../../.oracle_jre_usage/
+*.../../../../.psql_history
+*.../../../../.pylint.d/
+*.../../../../.python_history
+*.../../../../.redshiftTools/
+*.../../../../.rstudio-desktop/
+*.../../../../.spyder-py3/
+*.../../../../.sqlworkbench/
+*.../../../../.ssh/
+*.../../../../.subversion/
+*.../../../../.viminfo
+*.../../../../.vscode/
+*.../../../../.wdm/
+*.../../../../.zsh_history
+*.../../../../1_Python Statements.ipynb
+*.../../../../2 Methods_and_Functions.ipynb
+*.../../../../3_Methods_and_Functions.ipynb
+*.../../../../Applications/
+../../../.DS_Store
+../../../.localized
+../../../2015/
+../../../2019_TaxReturn.pdf
+../../../23_Northbrook_Gardens/
+../../../AWS_AccessKeys.docx
+../../../AWS_ssh_with_MAC.png
+../../../Data_Science.zip
+../../.DS_Store
+../../Blue_Owl_Coding_Challenge/
+../../Deep_Learning_Coursera/
+../../Machine_Translation_Project/
+../../NLP/
+../../NLP3/
+../../NLP_Results/
+../../Voice_User_Interface/
+../../aws/
+../../brownlee/
+../../certificates/
+../../edx/
+../../python/
+../../python_pycharm/
+../../reshape.pdf
+../.DS_Store
+../.idea/
+../AWS_ssh_with_MAC.png
+../SSH into AWS Ubuntu instance.docx
+../export_files/
+../my_aws_script.py
+../myplot
+../pem_file/
+../py_code/
+../pycharm_project/
+.DS_Store
+.idea/
+__pycache__/
+main.py
+scheduleCron.py
+stock_data.py
+stockstats.py
+../~$H into AWS Ubuntu instance.docx
+../../stock_nn/
+../../submit-b7add63f-d5e8-43c6-b671-6842ba9c553b.zip
+../../submit-e1480a09-a70e-40f3-abc6-5424fbd0e804.zip
+../../udemy/
+../../../Data_Science_Learning.zip
+../../../Data_Science_Learning/
+../../../Dog_Moving/
+../../../JamesMcL.zip
+../../../JamesMcL/
+../../../OneDrive-2020-07-30 (1)/
+../../../Relocated Items
+../../../VIZIO Separation Packet w. Options (INV).pdf
+../../../Vizio ID Card.pdf
+../../../clist/
+../../../colum_mcl/
+../../../cv/
+../../../james_mcl_folder_082020.zip
+../../../james_mcl_folder_082020/
+../../../venv/
+../../../../Documents/
+../../../../Downloads/
+../../../../Library/
+../../../../Movies/
+../../../../Music/
+../../../../NLP POS Tagging.ipynb
+../../../../Objects and Data Structures Assessment.ipynb
+../../../../Pictures/
+../../../../Public/
+../../../../PycharmProjects/
+../../../../RedshiftJDBC41-1.1.9.1009.jar
+../../../../RedshiftJDBC41-1.2.16.1027.jar
+../../../../RedshiftJDBC42-1.2.16.1027.jar
+../../../../Spark_Test.ipynb
+../../../../Untitled4.ipynb
+../../../../Untitled5.ipynb
+../../../../anaconda3/
+../../../../file_name_james_missing.csv
+../../../../java_error_in_pycharm.hprof
+../../../../nltk_data/
+../../../../projects/
+../../../../scikit_learn_data/
+../../../../seaborn-data/
+../../../../testanova113.csv
