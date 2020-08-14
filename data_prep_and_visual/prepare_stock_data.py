@@ -15,7 +15,11 @@ import numpy as np
 
 end = datetime.date.today ()
 end = datetime.datetime (end.year, end.month, end.day)  # to midnight of that day
-start = (end - relativedelta (years=7))
+
+#Going back 3 year because of guidance below for MACDH:
+#NOTE: Behavior of MACDH calculation has changed as of July 2017 - it is now 1/2 of previous calculated values
+#Exclude of find the transition date and / by 2
+start = (end - relativedelta (years=3))
 
 # return list of Dow tickers
 dow_tickers = pd.Series (stock_info.tickers_dow ())
@@ -102,18 +106,19 @@ stock_data = pd.concat ([ index_ohc, stock_ohc ], axis=0)
 
 def get_movingavg(df, x):
     '''Takes in a df and numeric moving avg based on the number of days'''
-    return df.loc [ :, 'close' ].rolling (x).mean ()
+    return df['close'].rolling(x).mean()
+    #return df.loc [ :, 'close' ].rolling (x).mean ()
+
 
 
 def get_prevclose(df, x):
     '''Takes in a df and variable to return the % change from the previous day'''
     # return (df [ x ] - df [ x ].shift (1)) / df [ x ].shift (1)
-    return (df.loc [ :, x ] - df.loc [ :, x ].shift (1)) / df.loc [ :, x ].shift (1)
-
-import copy
+    return (df[x] - df[x].shift (1)) / df[x].shift (1)
+    #return (df.loc [ :, x ] - df.loc [ :, x ].shift (1)) / df.loc [ :, x ].shift (1)
 
 #Convert the df of stock data to a list of dataframes - one for each ticker
-
+pd.options.mode.chained_assignment = None #turn of chain warning
 def get_indicators(df):
     '''Creates a list of dfs, one for each stock - then
     adds moving average, previous close and volume data
@@ -121,15 +126,20 @@ def get_indicators(df):
     key_names = df['ticker'].unique().tolist()
     df_history, df_recent = {}, {}
     for i in key_names:
-        df_history [ i ] = df [ (df [ 'ticker' ] == i) ]
-        df_history[i] [ "ma20" ] = get_movingavg (df_history[i], 20)
-        df_history[i] [ "ma50" ] = get_movingavg (df_history[i], 50)
-        df_history[i] [ "ma200" ] = get_movingavg (df_history[i], 200)
-        df_history[ i ] [ "prev_close_ch" ] = get_prevclose (df_history[ i ], 'close')
-        df_history[ i ] [ "prev_volume_ch" ] = get_prevclose (df_history[ i ], 'volume')
-        df_recent[ i ] = df_history [ i ].iloc[-1:,:]
+        df_hist = df[(df.loc[:, 'ticker'] == i)]
+        df_hist["ma20"] = get_movingavg(df_hist, 20)
+        df_hist["ma50"] = get_movingavg(df_hist, 50)
+        df_hist["ma200"] = get_movingavg(df_hist, 200)
+        df_hist["prev_close_ch"] = get_prevclose(df_hist, 'close')
+        df_hist["prev_volume_ch"] = get_prevclose(df_hist, 'volume')
+
+        df_history[i] = df_hist #append each stock baxk to df_history
+
+        df_recent[i] = df_hist.iloc[-1:, :] #df_recent is the last obs for each stock
+        df_hist = df_hist.iloc[0:0] #empty the df for reuse
     return df_history, df_recent
 
+#stock_history, stock_recent = pd.DataFrame(), pd.DataFrame()
 stock_history, stock_recent = {}, {}
 stock_history, stock_recent = get_indicators(stock_data)
 
@@ -137,7 +147,8 @@ stock_history, stock_recent = get_indicators(stock_data)
 #Appends to existing - could duplicate
 try:
     if stock_data.index.max () == datetime.date.today ():
-        f= open(r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_recent.csv',"a")
+        #f= open(r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_recent.csv',"a")
+        f = open (r'/home/ubuntu/stock_lstm/export_files/stock_recent.csv', "a")
         for df in stock_recent:
             stock_recent[df].to_csv(f, header=False)
         f.close()
@@ -146,7 +157,8 @@ except:
 
 try:
     if stock_data.index.max () == datetime.date.today ():
-        f= open(r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_history.csv',"a")
+        #f= open(r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_history.csv',"a")
+        f = open (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', "a")
         for df in stock_history:
             stock_history[df].to_csv(f, header=False)
         f.close()
@@ -156,8 +168,10 @@ except:
 
 #Only needs to be run when there is a change to the headers - w will overwrite anyway.
 headers = stock_history['AAPL'].columns
+
 import csv
-with open(r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/headers.csv',"w") as f:
+#with open(r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/headers.csv',"w") as f:
+with open(r'/home/ubuntu/stock_lstm/export_files/headers.csv',"w") as f:
     writer = csv.writer(f)
     writer.writerow(headers)
 

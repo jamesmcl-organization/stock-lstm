@@ -13,6 +13,7 @@ import stockstats
 from stockstats import StockDataFrame as sdf
 from pandas_datareader import data as pdr
 import requests_html
+#python -m pip install requests-html
 
 '''Develop a baseline univariate model, using only daily close to determine the
 next day's stock price.
@@ -144,13 +145,13 @@ def simple_configs(max_length, offsets=[1]):
                 configs.append(cfg)
     return configs
 
-headers = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/headers.csv')
-df = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
+headers = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/headers.csv')
+df = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
 
 # Extract the close for 'AAPL' only
 history = df[df['ticker'] == 'AAPL']['close'].sort_index(ascending=True)
 history.index.name = 'date'
-n_test_pct = 0.2
+n_test_pct = 0.1
 n_test = int(len(history) * n_test_pct)
 # model configs
 max_length = (len (history) - n_test)

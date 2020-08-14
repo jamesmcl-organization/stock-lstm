@@ -6,6 +6,7 @@ from joblib import delayed
 from warnings import catch_warnings
 from warnings import filterwarnings
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import statsmodels
 from sklearn.metrics import mean_squared_error
 from pandas import read_csv
 from numpy import array
@@ -111,7 +112,6 @@ def exp_smoothing_configs(seasonal=[None]):
     return models
     
 # create config instances
-
 def exp_smoothing_configs(seasonal=[None]):
 	models = list()
 	# define config lists
@@ -133,12 +133,12 @@ def exp_smoothing_configs(seasonal=[None]):
 	return models
 
 
-headers = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/headers.csv')
-df = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
+headers = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/headers.csv')
+df = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
 
 # Extract the close for 'AAPL' only
 history = df[df['ticker'] == 'AAPL']['close'].sort_index(ascending=True)
-history = history.iloc[-300:]
+#history = history.iloc[-100:]
 history.index.name = 'date'
 data = history.values
 n_test_pct = 0.1

@@ -19,8 +19,10 @@ index_tickers = [ 'HUI', 'XAU', 'DXY', 'CL', 'DJI', 'SPY', 'NDAQ' ]
 indicators = [ 'dma', 'volume_delta', 'close_12_ema', 'close_26_ema', 'macd', 'macd_9_ema', 'macds', 'macdh' ]
 
 #df = pd.read_csv (r'/home/ubuntu/stock_nn/export_stock_data.csv', parse_dates=[ 'date' ], squeeze=True)
-headers = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/headers.csv')
-df = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
+#headers = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/headers.csv')
+headers = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/headers.csv')
+#df = pd.read_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
+df = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
 
 # Extract the index tickers and AAPL stock
 subset = df [ (df [ 'ticker' ].isin (index_tickers)) | (df [ 'ticker' ] == 'AAPL') ]
@@ -31,7 +33,8 @@ symbols = aapl [ 'ticker' ].unique ()
 
 
 
-aapl.to_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/aapl.csv', index=True, header=True)
+aapl.to_csv (r'/home/ubuntu/stock_lstm/export_files/aapl.csv', index=True, header=True)
+#aapl.to_csv (r'/Users/jamesm/Desktop/Data_Science/stock_lstm/export_files/aapl.csv', index=True, header=True)
 
 ticker = str (aapl [ 'ticker' ].unique () [ 1:-1 ])
 

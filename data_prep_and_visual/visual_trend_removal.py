@@ -145,7 +145,7 @@ def chart_results(predsteps, predictions, y_dev, plot_days, y_dev_raw ):
 # execute the experiment
 def process_data():
     #project_path = '/Users/jamesm/Desktop/Data_Science/stock_nn'
-    project_path = r'/home/ubuntu/tmp/pycharm_project_162'
+    project_path = r'/home/ubuntu/stock_lstm/export_files/'
     os.chdir (project_path)
 
     # Import the Dataset
