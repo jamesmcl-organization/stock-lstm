@@ -19,7 +19,7 @@ end = datetime.datetime (end.year, end.month, end.day)  # to midnight of that da
 #Going back 3 year because of guidance below for MACDH:
 #NOTE: Behavior of MACDH calculation has changed as of July 2017 - it is now 1/2 of previous calculated values
 #Exclude of find the transition date and / by 2
-start = (end - relativedelta (years=3))
+start = (end - relativedelta (years=8))
 
 # return list of Dow tickers
 dow_tickers = pd.Series (stock_info.tickers_dow ())
