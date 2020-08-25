@@ -41,54 +41,28 @@ def split_dataset(data, timesteps, train_pct):
 
 	return train, test
 
-train, test = split_dataset(dataset.values, 1, 0.8)
+#train, test = split_dataset(dataset.values, 1, 0.8)
+#train, test = split_dataset(df, 1, 0.8)
 
 
-
-
-#Do the initial data split, ensuring that each week overlaps. Training happens on the overlapping train set
-#and then applied to the test set - rather than a weekly walk forward on test.
-'''
-def split_data(data, timesteps, predsteps, train_pct):
-	x_data, y_data = [], []
-	in_start = 0
-		# step over the entire history one time step at a time
-	for _ in range (len (data)):
-		# define the end of the input sequence
-		in_end = in_start + timesteps
-		out_end = in_end + predsteps
-		# ensure there is enough to make a 5 day prediction
-		if out_end <= len(data):
-			x_data.append(data[in_start:in_end, :])
-			y_data.append(data[in_end:out_end, 0])  # [:, 0] might have to factor
-		in_start += 1
-	x_data, y_data = np.array(x_data), np.array(y_data)
-	train_weeks = int(x_data.shape[0] * train_pct)
-	train_x, train_y, test_x, test_y = x_data[0:train_weeks], y_data[0:train_weeks], \
-								   x_data[train_weeks:], y_data[train_weeks:]
-
-	return train_x, test_x, train_y, test_y
-
-train, train_y, test, test_y = split_data(dataset.values, 5, 7, 0.9)
 
 #X = np.arange(0, 1000, 1)
 #y = np.arange(1, 1001, 1)
 #X = X.reshape(X.shape[0], 1)
 #y = y.reshape(y.shape[0], 1)
 #df = np.concatenate((X, y), axis=1)
-'''
+
 # convert history into inputs and outputs
-def to_supervised(train, n_input=14, n_out=7):
+def to_supervised(train, n_input, n_out):
 	# flatten data
-	#data = train.reshape((train.shape[0]*train.shape[1], train.shape[2]))
+	data = train.reshape((train.shape[0]*train.shape[1], train.shape[2]))
 	X, y = list(), list()
 	in_start = 0
 	# step over the entire history one time step at a time
 	for _ in range(len(data)):
 		# define the end of the input sequence
 		in_end = in_start + n_input
-		#out_end = in_end + n_out (in_end * timesteps) + n_out
-		out_end = in_end + (in_end * timesteps) + n_out
+		out_end = in_end + n_out
 		# ensure we have enough data for this instance
 		if out_end <= len(data):
 			X.append(data[in_start:in_end, :])
@@ -97,66 +71,26 @@ def to_supervised(train, n_input=14, n_out=7):
 		in_start += 1
 	return array(X), array(y)
 
-
-train_x, train_y = to_supervised(train, 14, 4)
-
-'''
-def timeseries_to_supervised(data, timesteps, predsteps):
-    x_data, y_data = [ ], [ ]
-    in_start = 0
-    # step over the entire history one time step at a time
-    for _ in range (len (data)):
-        # define the end of the input sequence
-        in_end = in_start + timesteps
-        out_end = in_end + predsteps
-        # ensure there is enough to make a 5 day prediction
-        if out_end <= len (data):
-            x_data.append (data [ in_start:in_end, : ])
-            y_data.append (data [ in_end:out_end, 0 ]) #[:, 0] might have to factor
-        # move along one time step
-        in_start += 1
-    x_data, y_data = np.array (x_data), np.array (y_data)
-	#history = pd.concat(x_data, y_data)
-	return x_data, y_data
-	#return history
-
-def split_data(X, y, train_pct):
-    ##Takes in a dataset and returns an 80/20 split of train
-    ##and test in the form of a numpy array
-
-    split_size = int((int(X.shape[0]) * train_pct))
-    x_train, x_dev = X[0:split_size, :, :], X[split_size:, :, :]
-    y_train, y_dev = y[ 0:split_size, :], y [ split_size:, :]
-
-    assert int(x_train.shape[0]) + int(x_dev.shape[0]) == int(X.shape[0])
-    assert int(y_train.shape [ 0 ]) + int (y_dev.shape [ 0 ]) == int (y.shape [ 0 ])
-
-    #return x_train, y_train, x_dev, y_dev
-	return x_train, x_dev
-
-'''
-
-
+#train_x, train_y = to_supervised(train, 14, 5)
 # evaluate one or more weekly forecasts against expected values
-def evaluate_model(train, test, n_input):
-	# fit model
-	model = build_model(train, n_input)
-	# history is a list of weekly data
-	history = [x for x in train]
-	# walk-forward validation over each week
-	predictions, actuals = list(), list()
-	for i in range(len(test)):
-		# predict the week
-		yhat_sequence = forecast(model, history, n_input)
-		# store the predictions
-		predictions.append(yhat_sequence)
-		# get real observation and add to history for predicting the next week
-		history.append(test[i, :])
-		actuals.append(test[i, :])
-	# evaluate predictions days for each week
-	predictions = array(predictions)
-	score, scores = evaluate_forecasts(test[:, :, 0], predictions)
-	return score, scores, actuals, predictions
+def evaluate_forecasts(actual, predicted):
+	scores = list()
+	# calculate an RMSE score for each day
+	for i in range(actual.shape[1]):
+		# calculate mse
+		mse = mean_squared_error(actual[:, i], predicted[:, i])
+		# calculate rmse
+		rmse = sqrt(mse)
+		# store
+		scores.append(rmse)
+	# calculate overall RMSE
+	s = 0
+	for row in range(actual.shape[0]):
+		for col in range(actual.shape[1]):
+			s += (actual[row, col] - predicted[row, col])**2
+	score = sqrt(s / (actual.shape[0] * actual.shape[1]))
+	return score, scores
+
 
 # summarize scores
 def summarize_scores(name, score, scores):
@@ -183,9 +117,9 @@ def summarize_scores(name, score, scores):
 #	return array(X), array(y)
 
 # train the model
-def build_model(train, n_input):
+def build_model(train, n_input, n_out):
 	# prepare data
-	train_x, train_y = to_supervised(train, n_input)
+	train_x, train_y = to_supervised(train, n_input, n_out)
 	# define parameters
 	verbose, epochs, batch_size = 1, 20, 32
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
@@ -220,10 +154,10 @@ def forecast(model, history, n_input):
 	return yhat
 
 # evaluate a single model
-def evaluate_model(train, test, n_input):
+def evaluate_model(train, test, n_input, n_out):
 	# fit model
-	model = build_model(train, n_input)
-	# history is a list of weekly data
+	model = build_model(train, n_input, n_out)
+	# history is the training data in list format - test data is added to it in walk forward fashion
 	history = [x for x in train]
 	# walk-forward validation over each week
 	predictions, actuals = list(), list()
@@ -238,7 +172,7 @@ def evaluate_model(train, test, n_input):
 	# evaluate predictions days for each week
 	predictions = array(predictions)
 	score, scores = evaluate_forecasts(test[:, :, 0], predictions)
-	return score, scores, actuals, predictions
+	return score, scores, actuals, predictions, history
 
 
 def process_data(ticker):
@@ -281,16 +215,17 @@ def process_data(ticker):
 
 dataset = process_data('AAPL')
 
-train, test = split_dataset(dataset.values, 5, 0.9)
+train, test = split_dataset(dataset.values, 1, 0.9)
 #X, y = timeseries_to_supervised(dataset.values, 5, 5)
 #train, test = split_data(X, y, 0.9)
 # evaluate model and get scores
 n_input = 14
-score, scores, actuals, predictions = evaluate_model(train, test, n_input)
+n_out = 5
+score, scores, actuals, predictions, history = evaluate_model(train, test, n_input, n_out)
 # summarize scores
 summarize_scores('cnn', score, scores)
 # plot scores
-days = ['mon', 'tue', 'wed', 'thr', 'fri']
+days = ['day1', 'day2', 'day3', 'day4', 'day5']
 plt.plot(days, scores, marker='o', label='cnn')
 plt.show()
 
