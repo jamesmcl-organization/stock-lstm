@@ -142,9 +142,9 @@ def build_model(train, n_input, n_out):
 def forecast(model, history, n_input):
 	# flatten data
 	data = array(history)
-	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2]))
+	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2])) #reshapes history from (2669, 1, 14) to (2669, 14)
 	# retrieve last observations for input data
-	input_x = data[-n_input:, :]
+	input_x = data[-n_input:, :] #takes the last 14 (n_input) steps from history and reshapes to prepare for prediction below
 	# reshape into [1, n_input, n]
 	input_x = input_x.reshape((1, input_x.shape[0], input_x.shape[1]))
 	# forecast the next week
@@ -166,14 +166,15 @@ def evaluate_model(train, test, n_input, n_out):
 		yhat_sequence = forecast(model, history, n_input)
 		# store the predictions
 		predictions.append(yhat_sequence)
-		# get real observation and add to history for predicting the next week
+		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
-		actuals.append(test[i, :])
+		_, y = to_supervised(test[i:, :], n_input, n_out) #Get the actuals from current to end - X = i and y = i+1
+		print(y[0, :])
+		actuals.append(y[0, :]) #y will always correspond to the first row, given the movement with each i iteration.
 	# evaluate predictions days for each week
 	predictions = array(predictions)
 	score, scores = evaluate_forecasts(test[:, :, 0], predictions)
 	return score, scores, actuals, predictions, history
-
 
 def process_data(ticker):
 
@@ -183,6 +184,7 @@ def process_data(ticker):
 
 	df.reset_index (inplace=True)		#temporarily reset the index to get the week day for OHE
 	df['date']= pd.to_datetime(df['date'])
+	df.drop_duplicates(['date', 'ticker', 'close'], inplace=True)
 	df [ 'day' ] = list (map (lambda x: datetime.weekday(x), df [ 'date' ])) #adds the numeric day for OHE
 	df.set_index('date', inplace=True) #set the index back to the date field
 
