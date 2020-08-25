@@ -15,8 +15,19 @@ import numpy as np
 import matplotlib.dates as mdates
 from datetime import datetime, date
 
-'''
-def split_dataset(data, timesteps=5, train_pct=0.8):
+#The logic trains on the overlapping weeks but tests on mutually exclusive weeks. My issue is when updating the
+#model with one day of data to make a 5 day prediction, on a daily, overlapped basis. This should be okay if the
+#following conditions are met:
+
+#the history dataset is capabale of having one day added to it
+#history can then be expanded to the overlapped view so that we can run the 5 day prediction daily
+#the model is ultimately trained on all data, overlapped.
+
+
+def split_dataset(data, timesteps, train_pct):
+
+	'''timesteps here should always be 1 - makes it more straightforward
+	to send both test and train through the to_supervised function.'''
 
 	leftover = data.shape[0]%timesteps 	# Reduce the data to a number divisible by 5
 	weeks = data // timesteps			# determine total number of trading weeks
@@ -29,7 +40,15 @@ def split_dataset(data, timesteps=5, train_pct=0.8):
 	test = array(split(test, len(test) / timesteps))
 
 	return train, test
-'''
+
+train, test = split_dataset(dataset.values, 1, 0.8)
+
+def create_history(data, timesteps):
+	'''Returns a 3d image of the initial stock data'''
+	return array(split(data, len(data) / timesteps))
+
+
+history = create_history(dataset.values, 1)
 
 #Do the initial data split, ensuring that each week overlaps. Training happens on the overlapping train set
 #and then applied to the test set - rather than a weekly walk forward on test.
