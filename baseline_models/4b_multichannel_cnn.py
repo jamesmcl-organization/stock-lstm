@@ -43,15 +43,12 @@ def split_dataset(data, timesteps, train_pct):
 
 train, test = split_dataset(dataset.values, 1, 0.8)
 
-def create_history(data, timesteps):
-	'''Returns a 3d image of the initial stock data'''
-	return array(split(data, len(data) / timesteps))
 
 
-history = create_history(dataset.values, 1)
 
 #Do the initial data split, ensuring that each week overlaps. Training happens on the overlapping train set
 #and then applied to the test set - rather than a weekly walk forward on test.
+'''
 def split_data(data, timesteps, predsteps, train_pct):
 	x_data, y_data = [], []
 	in_start = 0
@@ -79,7 +76,7 @@ train, train_y, test, test_y = split_data(dataset.values, 5, 7, 0.9)
 #X = X.reshape(X.shape[0], 1)
 #y = y.reshape(y.shape[0], 1)
 #df = np.concatenate((X, y), axis=1)
-
+'''
 # convert history into inputs and outputs
 def to_supervised(train, n_input=14, n_out=7):
 	# flatten data
