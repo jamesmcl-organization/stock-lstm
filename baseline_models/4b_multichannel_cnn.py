@@ -23,25 +23,36 @@ from datetime import datetime, date
 #history can then be expanded to the overlapped view so that we can run the 5 day prediction daily
 #the model is ultimately trained on all data, overlapped.
 
+def reshape_dataset(data, timesteps):
+	'''timesteps here should be set to 1 - for simplicity
+	returns the input but in 3D form in equal spaced timesteps'''
 
-def split_dataset(data, timesteps, train_pct):
+	leftover = data.shape[0] % timesteps  # Reduce the data to a number divisible by 5
+	data_sub = data[leftover:]
+
+	return array(split(data_sub, len(data_sub) / timesteps))
+
+dataset_reshaped = reshape_dataset(dataset.values, 1)
+
+
+def split_dataset(data, train_pct):
 
 	'''timesteps here should always be 1 - makes it more straightforward
 	to send both test and train through the to_supervised function.'''
 
-	leftover = data.shape[0]%timesteps 	# Reduce the data to a number divisible by 5
-	weeks = data // timesteps			# determine total number of trading weeks
+	#leftover = data.shape[0]%timesteps 	# Reduce the data to a number cleanly divisible by timesteps
 
-	data_sub = data[leftover:]			# Reduce the initial data to a number divisible by 5
-	train_weeks = int(((data_sub.shape[0] * train_pct) // timesteps) * timesteps)
-	train, test = data_sub[0:train_weeks], data_sub[train_weeks:]
+	#data_sub = data[leftover:]			# Reduce the initial data to a number divisible by 5
+	#train_weeks = int(((data.shape[0] * train_pct) // timesteps) * timesteps)
+	train_weeks = int(data.shape[0] * train_pct)
+	train, test = data[0:train_weeks, :, :], data[train_weeks:, :, :]
 
-	train = array(split(train, len(train) / timesteps))
-	test = array(split(test, len(test) / timesteps))
+	#train = array(split(train, len(train) / timesteps))
+	#test = array(split(test, len(test) / timesteps))
 
 	return train, test
 
-#train, test = split_dataset(dataset.values, 1, 0.8)
+train_, test_ = split_dataset(dataset_reshaped, 0.8)
 #train, test = split_dataset(df, 1, 0.8)
 
 
