@@ -169,9 +169,12 @@ def evaluate_model(train, test, n_input, n_out):
 		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
 		_, y = to_supervised(test[i:, :], n_input, n_out) #Get the actuals from current to end - X = i and y = i+1
-		print(y[0, :])
-		actuals.append(y[0, :]) #y will always correspond to the first row, given the movement with each i iteration.
+		y_sequence = y[0, :].reshape(1, y[0, :].shape[0]) #y_sequence is shape (5,) - reshape to shape (1,5)
+		print(y_sequence.shape)
+		print(y_sequence)
+		actuals.append(y_sequence) #y will always correspond to the first row, given the movement with each i iteration.
 	# evaluate predictions days for each week
+	actuals = array(actuals)
 	predictions = array(predictions)
 	score, scores = evaluate_forecasts(test[:, :, 0], predictions)
 	return score, scores, actuals, predictions, history
