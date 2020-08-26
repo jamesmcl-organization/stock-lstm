@@ -66,7 +66,6 @@ def to_supervised(train, n_input, n_out):
 		in_start += 1
 	return array(X), array(y)
 
-#train_x, train_y = to_supervised(train, 14, 5)
 # evaluate one or more weekly forecasts against expected values
 def evaluate_forecasts(actual, predicted):
 	scores = list()
@@ -86,30 +85,10 @@ def evaluate_forecasts(actual, predicted):
 	score = sqrt(s / (actual.shape[0] * actual.shape[1]))
 	return score, scores
 
-
 # summarize scores
 def summarize_scores(name, score, scores):
 	s_scores = ', '.join(['%.1f' % s for s in scores])
 	print('%s: [%.3f] %s' % (name, score, s_scores))
-
-# convert history into inputs and outputs
-#def to_supervised(train, n_input, n_out=7):
-	# flatten data
-	#data = train.reshape((train.shape[0]*train.shape[1], train.shape[2]))
-	#X, y = list(), list()
-	#in_start = 0
-	# step over the entire history one time step at a time
-	#for _ in range(len(data)):
-		# define the end of the input sequence
-#		in_end = in_start + n_input#
-#		out_end = in_end + n_out
-#		# ensure we have enough data for this instance
-#		if out_end <= len(data):
-#			X.append(data[in_start:in_end, :])
-#			y.append(data[in_end:out_end, 0])
-#		# move along one time step
-#		in_start += 1
-#	return array(X), array(y)
 
 # train the model
 def build_model(train, n_input, n_out):
@@ -231,7 +210,7 @@ train, test = split_dataset(dataset_reshaped, 0.8)
 #X, y = timeseries_to_supervised(dataset.values, 5, 5)
 #train, test = split_data(X, y, 0.9)
 # evaluate model and get scores
-n_input = 14
+n_input = 25
 n_out = 5
 score, scores, actuals, predictions, history = evaluate_model(train, test, n_input, n_out)
 # summarize scores
