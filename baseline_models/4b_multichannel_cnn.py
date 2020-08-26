@@ -32,30 +32,14 @@ def reshape_dataset(data, timesteps):
 
 	return array(split(data_sub, len(data_sub) / timesteps))
 
-dataset_reshaped = reshape_dataset(dataset.values, 1)
-
-
 def split_dataset(data, train_pct):
 
-	'''timesteps here should always be 1 - makes it more straightforward
-	to send both test and train through the to_supervised function.'''
+	'''performs the splitting of the already reshaped dataset'''
 
-	#leftover = data.shape[0]%timesteps 	# Reduce the data to a number cleanly divisible by timesteps
-
-	#data_sub = data[leftover:]			# Reduce the initial data to a number divisible by 5
-	#train_weeks = int(((data.shape[0] * train_pct) // timesteps) * timesteps)
 	train_weeks = int(data.shape[0] * train_pct)
 	train, test = data[0:train_weeks, :, :], data[train_weeks:, :, :]
 
-	#train = array(split(train, len(train) / timesteps))
-	#test = array(split(test, len(test) / timesteps))
-
 	return train, test
-
-train_, test_ = split_dataset(dataset_reshaped, 0.8)
-#train, test = split_dataset(df, 1, 0.8)
-
-
 
 #X = np.arange(0, 1000, 1)
 #y = np.arange(1, 1001, 1)
@@ -132,7 +116,7 @@ def build_model(train, n_input, n_out):
 	# prepare data
 	train_x, train_y = to_supervised(train, n_input, n_out)
 	# define parameters
-	verbose, epochs, batch_size = 1, 20, 32
+	verbose, epochs, batch_size = 1, 1000, 32
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
 	# define model
 	model = Sequential()
@@ -177,30 +161,28 @@ def evaluate_model(train, test, n_input, n_out):
 	history = [x for x in train]
 	# walk-forward validation over each week
 	predictions, actuals = list(), list()
-	_, y = to_supervised(test, n_input, n_out)  # Get the actuals from current to end - X = i and y = i+1
-	_, y = to_supervised(history, n_input, n_out)  # Get the actuals from current to end - X = i and y = i+1
 	for i in range(len(test)):
 		# predict the week
 		yhat_sequence = forecast(model, history, n_input)
 		# store the predictions
 		predictions.append(yhat_sequence)
-		print(len(predictions))
 		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
-		#There needs to be an inclusion here that allows for that fact that y[0] applies to test[i+14]
-		if i < len(y):
-			actuals.append(y[i, :]) #try this out but add an if statement to allow for EOF
-
-		#_, y = to_supervised(test[i:, :], n_input, n_out) #Get the actuals from current to end - X = i and y = i+1
-		#y_sequence = y[0, :].reshape(1, y[0, :].shape[0]) #y_sequence is shape (5,) - reshape to shape (1,5)
-		#print(y_sequence.shape)
-		#print(y_sequence)
-		#actuals.append(y_sequence) #y will always correspond to the first row, given the movement with each i iteration.
+		#This next step can come out once the model is confirmed. It pulls the actuals
+		########################################################################
+		n_start = n_input
+		n_end = n_start + n_out
+		if n_end <= len(test): #Allows for the EoF
+			actuals.append(test[n_start:n_end, :, 0])
+		n_start += 1
+		#########################################################################
 	# evaluate predictions days for each week
 	actuals = array(actuals)
+	actuals = actuals.reshape(-1, actuals.shape[1])
 	predictions = array(predictions)
-	score, scores = evaluate_forecasts(test[:, :, 0], predictions)
+	score, scores = evaluate_forecasts(actuals, predictions)
 	return score, scores, actuals, predictions, history
+
 
 def process_data(ticker):
 
@@ -243,7 +225,9 @@ def process_data(ticker):
 
 dataset = process_data('AAPL')
 
-train, test = split_dataset(dataset.values, 1, 0.9)
+dataset_reshaped = reshape_dataset(dataset.values, 1)
+train, test = split_dataset(dataset_reshaped, 0.8)
+
 #X, y = timeseries_to_supervised(dataset.values, 5, 5)
 #train, test = split_data(X, y, 0.9)
 # evaluate model and get scores
@@ -262,14 +246,14 @@ plt.show()
 #simply learning a persistance - that is, using the most recent value to make
 #the prediction.
 act = np.array(actuals)
-day0_act = act[:, :, 0]
-day0_act = day0_act.reshape(day0_act.shape[0]*day0_act.shape[1])
+#day0_act = act[:, 0]
+day0_act = act.reshape(act.shape[0]*act.shape[1])
 
 pred = np.array(predictions)
 day0_pred = pred.reshape(pred.shape[0]*pred.shape[1])
 
 for i in range(0, n_input):
-	plt.plot (act[:, i, 0], color='blue')
+	plt.plot (act[:, i], color='blue')
 	plt.plot (pred[:, i], color='orange')
 	plt.title ("Actual v Prediction: Day " + str(i))
 	plt.show ()
