@@ -153,6 +153,11 @@ def forecast(model, history, n_input):
 	yhat = yhat[0]
 	return yhat
 
+
+#Will have to rethink the to_supervised problem below. Might have to throw history through to_supervised
+#and take the last one
+
+
 # evaluate a single model
 def evaluate_model(train, test, n_input, n_out):
 	# fit model
@@ -161,18 +166,25 @@ def evaluate_model(train, test, n_input, n_out):
 	history = [x for x in train]
 	# walk-forward validation over each week
 	predictions, actuals = list(), list()
+	_, y = to_supervised(test, n_input, n_out)  # Get the actuals from current to end - X = i and y = i+1
+	_, y = to_supervised(history, n_input, n_out)  # Get the actuals from current to end - X = i and y = i+1
 	for i in range(len(test)):
 		# predict the week
 		yhat_sequence = forecast(model, history, n_input)
 		# store the predictions
 		predictions.append(yhat_sequence)
+		print(len(predictions))
 		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
-		_, y = to_supervised(test[i:, :], n_input, n_out) #Get the actuals from current to end - X = i and y = i+1
-		y_sequence = y[0, :].reshape(1, y[0, :].shape[0]) #y_sequence is shape (5,) - reshape to shape (1,5)
-		print(y_sequence.shape)
-		print(y_sequence)
-		actuals.append(y_sequence) #y will always correspond to the first row, given the movement with each i iteration.
+		#There needs to be an inclusion here that allows for that fact that y[0] applies to test[i+14]
+		if i < len(y):
+			actuals.append(y[i, :]) #try this out but add an if statement to allow for EOF
+
+		#_, y = to_supervised(test[i:, :], n_input, n_out) #Get the actuals from current to end - X = i and y = i+1
+		#y_sequence = y[0, :].reshape(1, y[0, :].shape[0]) #y_sequence is shape (5,) - reshape to shape (1,5)
+		#print(y_sequence.shape)
+		#print(y_sequence)
+		#actuals.append(y_sequence) #y will always correspond to the first row, given the movement with each i iteration.
 	# evaluate predictions days for each week
 	actuals = array(actuals)
 	predictions = array(predictions)
