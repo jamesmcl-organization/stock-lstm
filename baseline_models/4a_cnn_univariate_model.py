@@ -12,14 +12,6 @@ import numpy as np
 import matplotlib.dates as mdates
 from datetime import datetime, date
 
-
-def difference_pct(dataset, interval=1):
-    diff = list()
-    for i in range(interval, len(dataset)):
-        value = (dataset[i] - dataset[i - interval]) / dataset[i - interval]
-        diff.append(value)
-    return pd.Series(diff)
-
 def reshape_dataset(data, timesteps):
 	'''timesteps here should be set to 1 - for simplicity
 	returns the input but in 3D form in equal spaced timesteps'''
@@ -39,17 +31,11 @@ def difference(dataset, interval=1):
 	diff = list()
 	for i in range(interval, len(dataset)):
 		value = dataset[i] - dataset[i - interval]
+		#value = dataset[i] - dataset[i - interval] / dataset[i - interval] # % differencing
 		diff.append(value)
 	#plt.plot(diff[1:])
 	#plt.show()
 	return diff
-
-# invert differenced forecast
-def inverse_difference(last_ob, value):#
-	return value + last_ob
-
-def inverse_difference(history, yhat, interval=1):
-    return yhat + history[-interval]
 
 def split_dataset(data, train_pct):
 
@@ -59,12 +45,6 @@ def split_dataset(data, train_pct):
 	train, test = data[0:train_weeks, :], data[train_weeks:, :]
 
 	return train, test
-
-#X = np.arange(0, 1000, 1)
-#y = np.arange(1, 1001, 1)
-#X = X.reshape(X.shape[0], 1)
-#y = y.reshape(y.shape[0], 1)
-#df = np.concatenate((X, y), axis=1)
 
 # convert history into inputs and outputs
 def to_supervised(train, n_input, n_out):
@@ -109,14 +89,14 @@ def summarize_scores(name, score, scores):
 	print('%s: [%.3f] %s' % (name, score, s_scores))
 
 
-# train the model
+	# train the model
 def build_model(train, n_input, n_out):
 
-	# prepare data - use differenced data at the point of training without affecting train or test
+	# prepare data - use differenced data at the point of training
 	train_x, train_y = to_supervised(np.array(difference(train, interval=1)), n_input, n_out)
-	#train_x, train_y = to_supervised(train, n_input, n_out)
+
 	# define parameters
-	verbose, epochs, batch_size = 1, 200, 16
+	verbose, epochs, batch_size = 1, 1000, 16
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
 	# define model
 	model = Sequential()
@@ -130,11 +110,11 @@ def build_model(train, n_input, n_out):
 	model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose)
 	return model
 
-# make a forecast
+	# make a forecast
 def forecast(model, history, n_input):
 	# flatten data
 	data = array(history)
-	data = np.array(difference(data, interval=1)) #difference the history data
+	data = np.array(difference(data, interval=1)) #difference the history data to prepare next test sample
 	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2]))
 	# retrieve last observations for input data
 	input_x = data[-n_input:, 0]
@@ -142,65 +122,47 @@ def forecast(model, history, n_input):
 	input_x = input_x.reshape((1, len(input_x), 1))
 	# forecast the next week on the differenced data
 	yhat = model.predict(input_x, verbose=0)
-	# we only want the vector forecast
 	yhat = yhat[0]
 	return yhat
 
-
-
-# evaluate a single model
+	# evaluate a single model
 def evaluate_model(df, n_input, n_out):
 
 	train, test = split_dataset(df, 0.8)
-
-	# fit model
 	model = build_model(train, n_input, n_out)
-	# history is the training data in list format - test data is added to it in walk forward fashion
 	history = [x for x in train]
 
 	# walk-forward validation over each week
-	predictions, actuals, predictions_diff = list(), list(), list()
+	predictions, actuals = list(), list()
+	#predictions_diff, act_inv = list(), list()
+	n_start = n_input
 	for i in range(len(test)):
 		# predict the week
 		yhat_sequence = forecast(model, history, n_input)
 
 		# store the predictions
-		predictions_diff.append(yhat_sequence) #Could remove this
+		##predictions_diff.append(yhat_sequence) #can remove
 		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
 
-
-		#This next step can come out once the model is confirmed. It pulls the actuals
-		########################################################################
-		n_start = n_input
+		'''predictions is pulled from the previous, undifferenced 5 test actuals, then added to the
+		differenced yhat sequence: predictions.append(test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence)'''
 		n_end = n_start + n_out
 		if n_end <= len(test): #Allows for the EoF
 			actuals.append(test[n_start:n_end, :, 0])
-			#y_sequence = test[n_start-1:n_end-1, :, 0].flatten() #remove this
-			#yhat_undiff = test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence
+			##act_inv.append(test[n_start-1:n_end-1, :, 0].flatten()) #can remove
 			predictions.append(test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence)
-			#preds_undiff.append(yhat_undiff)
-			#actuals_undiff.append(y_sequence)
+			#predictions.append(((test[n_start - 1:n_end - 1, :, 0].flatten() * yhat_sequence)) + yhat_sequence)
 		n_start += 1
-		#########################################################################
-		#Undifference the actuals
-		########################################################################
-		#interval = 1
-		#n_start = n_input - interval
-		#n_end = n_start + n_out
-		#if n_end <= len(test):  # Allows for the EoF
-		#	actuals_undiff.append(test[n_start:n_end, :, 0])
-		#n_start += 1
-	#########################################################################
 
 	# evaluate predictions days for each week
 	actuals = array(actuals)
 	actuals = actuals.reshape(-1, actuals.shape[1])
 	predictions = array(predictions)
-	predictions_diff = array(predictions_diff)
-	#actuals_undiff = array(actuals_undiff)
+	#predictions_diff = array(predictions_diff) #can remove
+	#act_inv = array(act_inv)
 	score, scores = evaluate_forecasts(actuals, predictions)
-	return score, scores, actuals, predictions, history, predictions_diff
+	return score, scores, actuals, predictions, history
 
 
 def process_data(ticker):
@@ -242,11 +204,14 @@ def process_data(ticker):
 
 	return df_close
 
-X = np.arange(0, 5000, 1)
-#y = np.arange(1, 1001, 1)
-df = X.reshape(X.shape[0], 1)
-#y = y.reshape(y.shape[0], 1)
-#df = np.concatenate((X, y), axis=1)
+
+	#Test Set###############
+	#Only use this code if testing for accuracy
+	#import random
+	#X = np.array([random.randint(1,500) for x in range(0,1000)])
+	#X.sort()
+	#dataset = pd.DataFrame(X.reshape(X.shape[0], 1))
+	#End Test Set###########
 
 dataset = process_data('AAPL')
 
@@ -255,17 +220,11 @@ dataset = process_data('AAPL')
 #Pulls the close column only and reshapes using a one interval step
 dataset_array = np.array(dataset.iloc[:, 0]) #dataset.iloc[:, 0]
 df = reshape_dataset(dataset_array, 1)
-#df_diff = np.array(difference(df, interval=1))
 
-#train, test = split_dataset(df, 0.8)
-#train_diff, test_diff = split_dataset(df_diff, 0.8)
-
-#X, y = timeseries_to_supervised(dataset.values, 5, 5)
-#train, test = split_data(X, y, 0.9)
 # evaluate model and get scores
-n_input = 7
+n_input = 15
 n_out = 5
-score, scores, actuals, predictions, history, predictions_diff = evaluate_model(df, n_input, n_out)
+score, scores, actuals, predictions, history = evaluate_model(df, n_input, n_out)
 # summarize scores
 summarize_scores('cnn', score, scores)
 # plot scores
@@ -279,15 +238,16 @@ plt.show()
 #the prediction.
 act = np.array(actuals)
 #day0_act = act[:, 0]
-day0_act = act.reshape(act.shape[0]*act.shape[1])
+#day0_act = act.reshape(act.shape[0]*act.shape[1])
 
 pred = np.array(predictions)
-day0_pred = pred.reshape(pred.shape[0]*pred.shape[1])
+#day0_pred = pred.reshape(pred.shape[0]*pred.shape[1])
 
-for i in range(0, n_input):
-	plt.plot (act[:, i], color='blue')
-	plt.plot (pred[:, i], color='orange')
-	plt.title ("Actual v Prediction: Day " + str(i))
+for i in range(0, n_out):
+	plt.plot (act[-20:, i], color='blue', label='actual')
+	plt.plot (pred[-20, i], color='orange', label='prediction')
+	plt.title ("Actual v Prediction: Day " + str(i+1))
+	plt.legend()
 	plt.show ()
 
 #Needs a bigger networks for example - more epochs + standardization - relu

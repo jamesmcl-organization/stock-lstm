@@ -209,6 +209,13 @@ def process_data(ticker):
 
 	return df_close
 
+#Test Set###############
+#import random
+#X = np.array([random.randint(1,500) for x in range(0,1000)])
+#X.sort()
+#dataset = pd.DataFrame(X.reshape(X.shape[0], 1))
+#End Test Set###########
+
 dataset = process_data('AAPL')
 
 dataset_array = np.array(dataset)
