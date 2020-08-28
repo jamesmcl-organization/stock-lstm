@@ -111,7 +111,8 @@ def summarize_scores(name, score, scores):
 
 # train the model
 def build_model(train, n_input, n_out):
-	# prepare data
+
+	# prepare data - use differenced data at the point of training without affecting train or test
 	train_x, train_y = to_supervised(np.array(difference(train, interval=1)), n_input, n_out)
 	#train_x, train_y = to_supervised(train, n_input, n_out)
 	# define parameters
@@ -133,14 +134,14 @@ def build_model(train, n_input, n_out):
 def forecast(model, history, n_input):
 	# flatten data
 	data = array(history)
-	data = np.array(difference(data, interval=1))
+	data = np.array(difference(data, interval=1)) #difference the history data
 	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2]))
 	# retrieve last observations for input data
 	input_x = data[-n_input:, 0]
 	# reshape into [1, n_input, 1]
 	input_x = input_x.reshape((1, len(input_x), 1))
-	# forecast the next week
-	yhat = model.predict(input_x, verbose=1)
+	# forecast the next week on the differenced data
+	yhat = model.predict(input_x, verbose=0)
 	# we only want the vector forecast
 	yhat = yhat[0]
 	return yhat
@@ -158,27 +159,13 @@ def evaluate_model(df, n_input, n_out):
 	history = [x for x in train]
 
 	# walk-forward validation over each week
-	predictions, actuals, actuals_undiff, preds_undiff = list(), list(), list(), list()
-	for i in range(len(test_diff)):
+	predictions, actuals, predictions_diff = list(), list(), list()
+	for i in range(len(test)):
 		# predict the week
 		yhat_sequence = forecast(model, history, n_input)
 
-
-
-		#########################################################################
-		# Undifference the actuals
-		########################################################################
-		#interval = 1
-		#n_start = n_input - interval
-		#n_end = n_start + n_out
-		#if n_end <= len(test):  # Allows for the EoF
-		#	actuals_undiff.append(test[n_start:n_end, :, 0])
-		#n_start += 1
-		#########################################################################
-
-
 		# store the predictions
-		predictions.append(yhat_sequence)
+		predictions_diff.append(yhat_sequence) #Could remove this
 		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
 
@@ -189,10 +176,11 @@ def evaluate_model(df, n_input, n_out):
 		n_end = n_start + n_out
 		if n_end <= len(test): #Allows for the EoF
 			actuals.append(test[n_start:n_end, :, 0])
-			y_sequence = test[n_start-1:n_end-1, :, 0]
-			yhat_undiff = np.sum(y_sequence, yhat_sequence)
-			preds_undiff.append(yhat_undiff)
-			actuals_undiff.append(y_sequence)
+			#y_sequence = test[n_start-1:n_end-1, :, 0].flatten() #remove this
+			#yhat_undiff = test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence
+			predictions.append(test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence)
+			#preds_undiff.append(yhat_undiff)
+			#actuals_undiff.append(y_sequence)
 		n_start += 1
 		#########################################################################
 		#Undifference the actuals
@@ -209,8 +197,10 @@ def evaluate_model(df, n_input, n_out):
 	actuals = array(actuals)
 	actuals = actuals.reshape(-1, actuals.shape[1])
 	predictions = array(predictions)
+	predictions_diff = array(predictions_diff)
+	#actuals_undiff = array(actuals_undiff)
 	score, scores = evaluate_forecasts(actuals, predictions)
-	return score, scores, actuals, predictions, history
+	return score, scores, actuals, predictions, history, predictions_diff
 
 
 def process_data(ticker):
@@ -219,10 +209,11 @@ def process_data(ticker):
 	df = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
 	df.index.name = 'date'
 
-	df.reset_index (inplace=True)		#temporarily reset the index to get the week day for OHE
-	df['date']= pd.to_datetime(df['date'])
-	df [ 'day' ] = list (map (lambda x: datetime.weekday(x), df [ 'date' ])) #adds the numeric day for OHE
-	df.set_index('date', inplace=True) #set the index back to the date field
+	df.reset_index(inplace=True)  # temporarily reset the index to get the week day for OHE
+	df['date'] = pd.to_datetime(df['date'])
+	df.drop_duplicates(['date', 'ticker', 'close'], inplace=True)
+	df['day'] = list(map(lambda x: datetime.weekday(x), df['date']))  # adds the numeric day for OHE
+	df.set_index('date', inplace=True)  # set the index back to the date field
 
 	# use pd.concat to join the new columns with your original dataframe
 	df = pd.concat([df,pd.get_dummies(df['day'],prefix='day',drop_first=True)],axis=1)
@@ -251,7 +242,15 @@ def process_data(ticker):
 
 	return df_close
 
+X = np.arange(0, 5000, 1)
+#y = np.arange(1, 1001, 1)
+df = X.reshape(X.shape[0], 1)
+#y = y.reshape(y.shape[0], 1)
+#df = np.concatenate((X, y), axis=1)
+
 dataset = process_data('AAPL')
+
+
 
 #Pulls the close column only and reshapes using a one interval step
 dataset_array = np.array(dataset.iloc[:, 0]) #dataset.iloc[:, 0]
@@ -266,7 +265,7 @@ df = reshape_dataset(dataset_array, 1)
 # evaluate model and get scores
 n_input = 7
 n_out = 5
-score, scores, actuals, predictions, history = evaluate_model(df, n_input, n_out)
+score, scores, actuals, predictions, history, predictions_diff = evaluate_model(df, n_input, n_out)
 # summarize scores
 summarize_scores('cnn', score, scores)
 # plot scores
