@@ -23,14 +23,21 @@ from datetime import datetime, date
 #history can then be expanded to the overlapped view so that we can run the 5 day prediction daily
 #the model is ultimately trained on all data, overlapped.
 
+
+
 def reshape_dataset(data, timesteps):
 	'''timesteps here should be set to 1 - for simplicity
 	returns the input but in 3D form in equal spaced timesteps'''
 
 	leftover = data.shape[0] % timesteps  # Reduce the data to a number divisible by 5
 	data_sub = data[leftover:]
+	data_sub = array(split(data_sub, len(data_sub) / timesteps))
 
-	return array(split(data_sub, len(data_sub) / timesteps))
+	#If univariate input, returns reshaped from 2d to 3d - otherwise, returns 3d
+	if data_sub.ndim == 2:
+		return data_sub.reshape(data_sub.shape[0], data_sub.shape[1], 1)
+	else:
+		return data_sub
 
 def split_dataset(data, train_pct):
 
@@ -204,8 +211,12 @@ def process_data(ticker):
 
 dataset = process_data('AAPL')
 
-dataset_reshaped = reshape_dataset(dataset.values, 1)
-train, test = split_dataset(dataset_reshaped, 0.8)
+dataset_array = np.array(dataset)
+df = reshape_dataset(dataset_array, 1)
+df_diff = np.array(difference(df, interval=1))
+
+train, test = split_dataset(df, 0.8)
+train_diff, test_diff = split_dataset(df_diff, 0.8)
 
 #X, y = timeseries_to_supervised(dataset.values, 5, 5)
 #train, test = split_data(X, y, 0.9)
