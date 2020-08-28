@@ -45,8 +45,8 @@ def difference(dataset, interval=1):
 	return diff
 
 # invert differenced forecast
-#def inverse_difference(last_ob, value):#
-#	return value + last_ob
+def inverse_difference(last_ob, value):#
+	return value + last_ob
 
 def inverse_difference(history, yhat, interval=1):
     return yhat + history[-interval]
@@ -112,7 +112,8 @@ def summarize_scores(name, score, scores):
 # train the model
 def build_model(train, n_input, n_out):
 	# prepare data
-	train_x, train_y = to_supervised(train, n_input, n_out)
+	train_x, train_y = to_supervised(np.array(difference(train, interval=1)), n_input, n_out)
+	#train_x, train_y = to_supervised(train, n_input, n_out)
 	# define parameters
 	verbose, epochs, batch_size = 1, 200, 16
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
@@ -132,6 +133,7 @@ def build_model(train, n_input, n_out):
 def forecast(model, history, n_input):
 	# flatten data
 	data = array(history)
+	data = np.array(difference(data, interval=1))
 	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2]))
 	# retrieve last observations for input data
 	input_x = data[-n_input:, 0]
@@ -146,26 +148,32 @@ def forecast(model, history, n_input):
 
 
 # evaluate a single model
-def evaluate_model(train, test, n_input, n_out):
+def evaluate_model(df, n_input, n_out):
+
+	train, test = split_dataset(df, 0.8)
+
 	# fit model
 	model = build_model(train, n_input, n_out)
 	# history is the training data in list format - test data is added to it in walk forward fashion
 	history = [x for x in train]
+
 	# walk-forward validation over each week
-	predictions, actuals, actuals_undiff = list(), list(), list()
-	for i in range(len(test)):
+	predictions, actuals, actuals_undiff, preds_undiff = list(), list(), list(), list()
+	for i in range(len(test_diff)):
 		# predict the week
 		yhat_sequence = forecast(model, history, n_input)
+
+
 
 		#########################################################################
 		# Undifference the actuals
 		########################################################################
-		interval = 1
-		n_start = n_input - interval
-		n_end = n_start + n_out
-		if n_end <= len(test):  # Allows for the EoF
-			actuals_undiff.append(test[n_start:n_end, :, 0])
-		n_start += 1
+		#interval = 1
+		#n_start = n_input - interval
+		#n_end = n_start + n_out
+		#if n_end <= len(test):  # Allows for the EoF
+		#	actuals_undiff.append(test[n_start:n_end, :, 0])
+		#n_start += 1
 		#########################################################################
 
 
@@ -174,10 +182,6 @@ def evaluate_model(train, test, n_input, n_out):
 		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
 
-		Now turn history into an array
-		x = np.array(history) and run through to_supervised to get to the actual values
-		You can then run yhat sequence through inverted_difference, along with to_sup(history-1)
-		It should work...
 
 		#This next step can come out once the model is confirmed. It pulls the actuals
 		########################################################################
@@ -185,16 +189,20 @@ def evaluate_model(train, test, n_input, n_out):
 		n_end = n_start + n_out
 		if n_end <= len(test): #Allows for the EoF
 			actuals.append(test[n_start:n_end, :, 0])
+			y_sequence = test[n_start-1:n_end-1, :, 0]
+			yhat_undiff = np.sum(y_sequence, yhat_sequence)
+			preds_undiff.append(yhat_undiff)
+			actuals_undiff.append(y_sequence)
 		n_start += 1
 		#########################################################################
 		#Undifference the actuals
 		########################################################################
-		interval = 1
-		n_start = n_input - interval
-		n_end = n_start + n_out
-		if n_end <= len(test):  # Allows for the EoF
-			actuals_undiff.append(test[n_start:n_end, :, 0])
-		n_start += 1
+		#interval = 1
+		#n_start = n_input - interval
+		#n_end = n_start + n_out
+		#if n_end <= len(test):  # Allows for the EoF
+		#	actuals_undiff.append(test[n_start:n_end, :, 0])
+		#n_start += 1
 	#########################################################################
 
 	# evaluate predictions days for each week
@@ -203,28 +211,6 @@ def evaluate_model(train, test, n_input, n_out):
 	predictions = array(predictions)
 	score, scores = evaluate_forecasts(actuals, predictions)
 	return score, scores, actuals, predictions, history
-
-
-# evaluate a single model
-#def evaluate_model(train, test, n_input):
-	# fit model
-#	model = build_model(train, n_input)
-	# history is a list of weekly data
-#	history = [x for x in train]
-	# walk-forward validation over each week
-#	predictions, actuals = list(), list()
-#	for i in range(len(test)):
-		# predict the week
-#		yhat_sequence = forecast(model, history, n_input)
-		# store the predictions
-#		predictions.append(yhat_sequence)
-		# get real observation and add to history for predicting the next week
-#		history.append(test[i, :])
-#		actuals.append(test[i, :])
-	# evaluate predictions days for each week
-#	predictions = array(predictions)
-#	score, scores = evaluate_forecasts(test[:, :, 0], predictions)
-#	return score, scores, actuals, predictions
 
 
 def process_data(ticker):
@@ -270,20 +256,17 @@ dataset = process_data('AAPL')
 #Pulls the close column only and reshapes using a one interval step
 dataset_array = np.array(dataset.iloc[:, 0]) #dataset.iloc[:, 0]
 df = reshape_dataset(dataset_array, 1)
-df_diff = np.array(difference(df, interval=1))
+#df_diff = np.array(difference(df, interval=1))
 
-#dataset_diff = np.array(difference(dataset.values, interval=1))
-#inverted = [inverse_difference(close.values[i], diff[i]) for i in range(len(diff))]
-
-train, test = split_dataset(df, 0.8)
-train_diff, test_diff = split_dataset(df_diff, 0.8)
+#train, test = split_dataset(df, 0.8)
+#train_diff, test_diff = split_dataset(df_diff, 0.8)
 
 #X, y = timeseries_to_supervised(dataset.values, 5, 5)
 #train, test = split_data(X, y, 0.9)
 # evaluate model and get scores
 n_input = 7
 n_out = 5
-score, scores, actuals, predictions, history = evaluate_model(train, test, n_input, n_out)
+score, scores, actuals, predictions, history = evaluate_model(df, n_input, n_out)
 # summarize scores
 summarize_scores('cnn', score, scores)
 # plot scores
