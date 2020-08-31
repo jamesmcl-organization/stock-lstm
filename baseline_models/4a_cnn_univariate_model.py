@@ -133,7 +133,8 @@ def evaluate_model(df, n_input, n_out):
 	history = [x for x in train]
 
 	# walk-forward validation over each week
-	predictions, actuals = list(), list()
+	predictions, actuals, predictions_ff = list(), list(), list()
+	#predictions, actuals, predictions_ff, temp_yhat, temp_nstart = list(), list(), list(), list(), list()
 	#predictions_diff, act_inv = list(), list()
 	n_start = n_input
 	for i in range(len(test)):
@@ -146,19 +147,38 @@ def evaluate_model(df, n_input, n_out):
 		history.append(test[i, :])
 
 		'''predictions is pulled from the previous, undifferenced 5 test actuals, then added to the
-		differenced yhat sequence: predictions.append(test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence)'''
+		differenced yhat sequence: predictions.append(test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence)
+		NB - if n_input=14, this is 15th iteration in the sequence. This is therefore correct for the next
+		5 days prediction after 14 timesteps:
+		actuals.append(test[n_start:n_end, :, 0])'''
 		n_end = n_start + n_out
 		if n_end <= len(test): #Allows for the EoF
 			actuals.append(test[n_start:n_end, :, 0])
-			##act_inv.append(test[n_start-1:n_end-1, :, 0].flatten()) #can remove
-			predictions.append(test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence)
-			#predictions.append(((test[n_start - 1:n_end - 1, :, 0].flatten() * yhat_sequence)) + yhat_sequence)
+			#temp_yhat.append(yhat_sequence)
+			#temp_nstart.append(test[n_start - 1, :, 0])
+			predictions.append(test[n_start - 1:n_end - 1, :, 0].flatten() + yhat_sequence)
+
+		#Tested and working - day before first prediction day. This is the basis to predicting all 5 days:
+		# prediction day - 1 + tomorrow's difference yhat = tomorrow's prediction
+		# Day 1 undifferenced prediction is now added to day 2's differenced yhat to get day 2
+		# And so on until the number of days is achieved - based on day 1 - given that will not have
+		# ground truth in production but will have to base 5 day predictions off day 1 changes onward.
+		# Finally, this outputs n_out+1. To finalize the predictions, we take predictions_ff[:, 1:]
+			predictions_ff.append(test[n_start - 1, :, 0]  + [sum(yhat_sequence[0:x:1]) for x in range(0, n_out+1)])
 		n_start += 1
 
 	# evaluate predictions days for each week
 	actuals = array(actuals)
 	actuals = actuals.reshape(-1, actuals.shape[1])
 	predictions = array(predictions)
+	predictions_ff = array(predictions_ff)
+	predictions_ff = predictions_ff.reshape(-1, predictions_ff.shape[1])
+	predictions_ff = predictions_ff[:, 1:] #takes columns 1 - n_out, since the above sequence appends column 0 before the cumulative
+
+	#temp_yhat = array(temp_yhat)
+	#temp_nstart = array(temp_nstart)
+
+
 	#predictions_diff = array(predictions_diff) #can remove
 	#act_inv = array(act_inv)
 	score, scores = evaluate_forecasts(actuals, predictions)
@@ -241,14 +261,25 @@ act = np.array(actuals)
 #day0_act = act.reshape(act.shape[0]*act.shape[1])
 
 pred = np.array(predictions)
+pred_ff = np.array(predictions_ff)
 #day0_pred = pred.reshape(pred.shape[0]*pred.shape[1])
 
 for i in range(0, n_out):
-	plt.plot (act[-20:, i], color='blue', label='actual')
-	plt.plot (pred[-20, i], color='orange', label='prediction')
+	plt.plot (act[-25:, i], color='blue', label='actual')
+	plt.plot (pred[-25:, i], color='orange', label='prediction')
+	plt.plot(pred_ff[-25:, i], color='red', label='prediction ff')
 	plt.title ("Actual v Prediction: Day " + str(i+1))
 	plt.legend()
 	plt.show ()
 
+#Prints the most recent 10 days predictions
+plt.plot (act[-2:, :].flatten(), color='blue', label='actual')
+plt.plot (pred[-2:, :].flatten(), color='orange', label='prediction')
+plt.plot(pred_ff[-2:, :].flatten(), color='red', label='prediction ff')
+plt.legend()
+plt.show ()
+
+plt.plot (pd.Series(act[-1:, :].flatten()), color='blue', label='actual')
+plt.show()
 #Needs a bigger networks for example - more epochs + standardization - relu
 #is not working at all.
