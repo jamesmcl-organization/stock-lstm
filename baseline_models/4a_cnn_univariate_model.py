@@ -90,13 +90,14 @@ def summarize_scores(name, score, scores):
 
 
 	# train the model
-def build_model(train, n_input, n_out):
+def build_model(train, test, n_input, n_out):
 
 	# prepare data - use differenced data at the point of training
 	train_x, train_y = to_supervised(np.array(difference(train, interval=1)), n_input, n_out)
+	dev_x, dev_y = to_supervised(np.array(difference(train, interval=1)), n_input, n_out)
 
 	# define parameters
-	verbose, epochs, batch_size = 1, 1000, 16
+	verbose, epochs, batch_size = 1, 1000, 32
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
 	# define model
 	model = Sequential()
@@ -107,7 +108,16 @@ def build_model(train, n_input, n_out):
 	model.add(Dense(n_outputs))
 	model.compile(loss='mse', optimizer='adam')
 	# fit network
-	model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose)
+	model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose, validation_data=(dev_x, dev_y))
+
+	plt.plot(model.history.history [ 'loss' ], color='blue')
+	plt.plot(model.history.history [ 'val_loss' ], color='orange')
+	plt.title("Model Train vs Val Loss: ")
+	plt.legend(['train', 'validation'], loc='upper right')
+
+
+
+
 	return model
 
 	# make a forecast
@@ -129,7 +139,7 @@ def forecast(model, history, n_input):
 def evaluate_model(df, n_input, n_out):
 
 	train, test = split_dataset(df, 0.8)
-	model = build_model(train, n_input, n_out)
+	model = build_model(train, test, n_input, n_out)
 	history = [x for x in train]
 
 	# walk-forward validation over each week
@@ -182,7 +192,7 @@ def evaluate_model(df, n_input, n_out):
 	#predictions_diff = array(predictions_diff) #can remove
 	#act_inv = array(act_inv)
 	score, scores = evaluate_forecasts(actuals, predictions)
-	return score, scores, actuals, predictions, history
+	return score, scores, actuals, predictions, history, predictions_ff
 
 
 def process_data(ticker):
@@ -244,7 +254,7 @@ df = reshape_dataset(dataset_array, 1)
 # evaluate model and get scores
 n_input = 15
 n_out = 5
-score, scores, actuals, predictions, history = evaluate_model(df, n_input, n_out)
+score, scores, actuals, predictions, history, predictions_ff = evaluate_model(df, n_input, n_out)
 # summarize scores
 summarize_scores('cnn', score, scores)
 # plot scores
@@ -257,12 +267,9 @@ plt.show()
 #simply learning a persistance - that is, using the most recent value to make
 #the prediction.
 act = np.array(actuals)
-#day0_act = act[:, 0]
-#day0_act = act.reshape(act.shape[0]*act.shape[1])
 
 pred = np.array(predictions)
 pred_ff = np.array(predictions_ff)
-#day0_pred = pred.reshape(pred.shape[0]*pred.shape[1])
 
 for i in range(0, n_out):
 	plt.plot (act[-25:, i], color='blue', label='actual')
@@ -278,8 +285,3 @@ plt.plot (pred[-2:, :].flatten(), color='orange', label='prediction')
 plt.plot(pred_ff[-2:, :].flatten(), color='red', label='prediction ff')
 plt.legend()
 plt.show ()
-
-plt.plot (pd.Series(act[-1:, :].flatten()), color='blue', label='actual')
-plt.show()
-#Needs a bigger networks for example - more epochs + standardization - relu
-#is not working at all.
