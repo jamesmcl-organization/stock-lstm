@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from keras.models import Sequential
 from keras.layers import Dense, Flatten
 from keras.layers.convolutional import Conv1D, MaxPooling1D
+from sklearn.preprocessing import  StandardScaler, MinMaxScaler
 import pandas as pd
 import numpy as np
 import matplotlib.dates as mdates
@@ -65,6 +66,32 @@ def to_supervised(train, n_input, n_out):
 		in_start += 1
 	return array(X), array(y)
 
+def create_scaler(train):
+	s0, s1, s2 = train.shape[0], train.shape[1], train.shape[2]
+	train = train.reshape(s0 * s1, s2)
+	scaler = StandardScaler()
+	scaler = scaler.fit(train)
+	train = scaler.fit_transform(train)
+	train_scale = train.reshape(s0, s1, s2)
+
+	return train_scale, scaler
+
+def apply_scaler(test, scaler):
+
+	s0, s1, s2 = test.shape[0], test.shape[1], test.shape[2]
+	test = test.reshape(s0 * s1, s2)
+	test = scaler.transform(test)
+	test_scale = test.reshape(s0, s1, s2)
+
+	return test_scale
+
+
+# inverse scaling for a forecasted value
+def invert_scale(scaler, yhat):
+    inverted = scaler.inverse_transform (yhat)
+    return inverted[0, :]
+
+
 def evaluate_forecasts(actual, predicted):
 	scores = list()
 	# calculate an RMSE score for each day
@@ -93,11 +120,17 @@ def summarize_scores(name, score, scores):
 def build_model(train, test, n_input, n_out):
 
 	# prepare data - use differenced data at the point of training
-	train_x, train_y = to_supervised(np.array(difference(train, interval=1)), n_input, n_out)
-	dev_x, dev_y = to_supervised(np.array(difference(train, interval=1)), n_input, n_out)
+	train_scale, scaler = create_scaler(np.array(difference(train, interval=1))) #creates the scaler on train
+	#total_scale, scaler = create_scaler(np.array(difference(np.concatenate((train, test), axis=0), interval=1)))
+	#train_scale = total_scale[0:train.shape[0],:,:] # creates the scaler on train
+	#test_scale = total_scale[train.shape[0]:, :, :]
+	test_scale = apply_scaler(np.array(difference(test, interval=1)), scaler) #applies the scaler to test
+
+	train_x, train_y = to_supervised(train_scale, n_input, n_out)
+	test_x, test_y = to_supervised(test_scale, n_input, n_out)
 
 	# define parameters
-	verbose, epochs, batch_size = 1, 1000, 32
+	verbose, epochs, batch_size = 1, 150, 4
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
 	# define model
 	model = Sequential()
@@ -108,23 +141,20 @@ def build_model(train, test, n_input, n_out):
 	model.add(Dense(n_outputs))
 	model.compile(loss='mse', optimizer='adam')
 	# fit network
-	model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose, validation_data=(dev_x, dev_y))
+	model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose, validation_data=(test_x, test_y))
 
 	plt.plot(model.history.history [ 'loss' ], color='blue')
 	plt.plot(model.history.history [ 'val_loss' ], color='orange')
 	plt.title("Model Train vs Val Loss: ")
 	plt.legend(['train', 'validation'], loc='upper right')
 
-
-
-
-	return model
+	return model, scaler
 
 	# make a forecast
-def forecast(model, history, n_input):
+def forecast(model, history, n_input, scaler):
 	# flatten data
 	data = array(history)
-	data = np.array(difference(data, interval=1)) #difference the history data to prepare next test sample
+	data = apply_scaler(np.array(difference(data, interval=1)), scaler) #difference the history data to prepare next test sample
 	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2]))
 	# retrieve last observations for input data
 	input_x = data[-n_input:, 0]
@@ -132,14 +162,15 @@ def forecast(model, history, n_input):
 	input_x = input_x.reshape((1, len(input_x), 1))
 	# forecast the next week on the differenced data
 	yhat = model.predict(input_x, verbose=0)
-	yhat = yhat[0]
-	return yhat
+	#yhat = invert_scale(scaler, yhat) #invert the scale back to differenced only
+	#yhat = yhat[0]
+	return invert_scale(scaler, yhat)
 
 	# evaluate a single model
 def evaluate_model(df, n_input, n_out):
 
-	train, test = split_dataset(df, 0.8)
-	model = build_model(train, test, n_input, n_out)
+	train, test = split_dataset(df, 0.7)
+	model, scaler = build_model(train, test, n_input, n_out)
 	history = [x for x in train]
 
 	# walk-forward validation over each week
@@ -149,7 +180,7 @@ def evaluate_model(df, n_input, n_out):
 	n_start = n_input
 	for i in range(len(test)):
 		# predict the week
-		yhat_sequence = forecast(model, history, n_input)
+		yhat_sequence = forecast(model, history, n_input, scaler)
 
 		# store the predictions
 		##predictions_diff.append(yhat_sequence) #can remove
@@ -280,8 +311,8 @@ for i in range(0, n_out):
 	plt.show ()
 
 #Prints the most recent 10 days predictions
-plt.plot (act[-2:, :].flatten(), color='blue', label='actual')
-plt.plot (pred[-2:, :].flatten(), color='orange', label='prediction')
-plt.plot(pred_ff[-2:, :].flatten(), color='red', label='prediction ff')
+plt.plot (act[-1:, :].flatten(), color='blue', label='actual')
+plt.plot (pred[-1:, :].flatten(), color='orange', label='prediction')
+plt.plot(pred_ff[-1:, :].flatten(), color='red', label='prediction ff')
 plt.legend()
 plt.show ()
