@@ -1,4 +1,4 @@
-# univariate multi-step cnn for the power usage dataset
+#Review more moving to class then begin hyperp tuning
 from math import sqrt
 from numpy import split, array
 from pandas import read_csv
@@ -12,85 +12,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.dates as mdates
 from datetime import datetime, date
-
-def reshape_dataset(data, timesteps):
-	'''timesteps here should be set to 1 - for simplicity
-	returns the input but in 3D form in equal spaced timesteps'''
-
-	leftover = data.shape[0] % timesteps  # Reduce the data to a number divisible by 5
-	data_sub = data[leftover:]
-	data_sub = array(split(data_sub, len(data_sub) / timesteps))
-
-	#If univariate input, returns reshaped from 2d to 3d - otherwise, returns 3d
-	if data_sub.ndim == 2:
-		return data_sub.reshape(data_sub.shape[0], data_sub.shape[1], 1)
-	else:
-		return data_sub
-
-# create a differenced series
-def difference(dataset, interval=1):
-	diff = list()
-	for i in range(interval, len(dataset)):
-		value = dataset[i] - dataset[i - interval]
-		#value = dataset[i] - dataset[i - interval] / dataset[i - interval] # % differencing
-		diff.append(value)
-	#plt.plot(diff[1:])
-	#plt.show()
-	return diff
-
-def split_dataset(data, train_pct):
-
-	'''performs the splitting of the already reshaped dataset'''
-
-	train_weeks = int(data.shape[0] * train_pct)
-	train, test = data[0:train_weeks, :], data[train_weeks:, :]
-
-	return train, test
-
-# convert history into inputs and outputs
-def to_supervised(train, n_input, n_out):
-	# flatten data
-	data = train.reshape((train.shape[0]*train.shape[1], train.shape[2]))
-	X, y = list(), list()
-	in_start = 0
-	# step over the entire history one time step at a time
-	for _ in range(len(data)):
-		# define the end of the input sequence
-		in_end = in_start + n_input
-		out_end = in_end + n_out
-		# ensure we have enough data for this instance
-		if out_end <= len(data):
-			X.append(data[in_start:in_end, :])
-			y.append(data[in_end:out_end, 0])
-		# move along one time step
-		in_start += 1
-	return array(X), array(y)
-
-def create_scaler(train):
-	s0, s1, s2 = train.shape[0], train.shape[1], train.shape[2]
-	train = train.reshape(s0 * s1, s2)
-	scaler = StandardScaler()
-	scaler = scaler.fit(train)
-	train = scaler.fit_transform(train)
-	train_scale = train.reshape(s0, s1, s2)
-
-	return train_scale, scaler
-
-def apply_scaler(test, scaler):
-
-	s0, s1, s2 = test.shape[0], test.shape[1], test.shape[2]
-	test = test.reshape(s0 * s1, s2)
-	test = scaler.transform(test)
-	test_scale = test.reshape(s0, s1, s2)
-
-	return test_scale
-
-
-# inverse scaling for a forecasted value
-def invert_scale(scaler, yhat):
-    inverted = scaler.inverse_transform (yhat)
-    return inverted[0, :]
-
+from importlib import reload
+import equity_classes
+reload(equity_classes)
+from equity_classes import classes as cl
 
 def evaluate_forecasts(actual, predicted):
 	scores = list()
@@ -115,22 +40,17 @@ def summarize_scores(name, score, scores):
 	s_scores = ', '.join(['%.1f' % s for s in scores])
 	print('%s: [%.3f] %s' % (name, score, s_scores))
 
-
 	# train the model
-def build_model(train, test, n_input, n_out):
+def build_model(train, test, n_input, n_out, interval):
 
-	# prepare data - use differenced data at the point of training
-	train_scale, scaler = create_scaler(np.array(difference(train, interval=1))) #creates the scaler on train
-	#total_scale, scaler = create_scaler(np.array(difference(np.concatenate((train, test), axis=0), interval=1)))
-	#train_scale = total_scale[0:train.shape[0],:,:] # creates the scaler on train
-	#test_scale = total_scale[train.shape[0]:, :, :]
-	test_scale = apply_scaler(np.array(difference(test, interval=1)), scaler) #applies the scaler to test
+	train_scale, scaler = aapl.create_scaler(np.array(aapl.get_difference(train, interval))) #creates the scaler on train
+	test_scale = aapl.apply_scaler(np.array(aapl.get_difference(test, interval)), scaler) #applies the scaler to test
 
-	train_x, train_y = to_supervised(train_scale, n_input, n_out)
-	test_x, test_y = to_supervised(test_scale, n_input, n_out)
+	train_x, train_y = aapl.to_supervised(train_scale, n_input, n_out)
+	test_x, test_y = aapl.to_supervised(test_scale, n_input, n_out)
 
 	# define parameters
-	verbose, epochs, batch_size = 1, 150, 4
+	verbose, epochs, batch_size = 1, 10, 4
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
 	# define model
 	model = Sequential()
@@ -150,40 +70,21 @@ def build_model(train, test, n_input, n_out):
 
 	return model, scaler
 
-	# make a forecast
-def forecast(model, history, n_input, scaler):
-	# flatten data
-	data = array(history)
-	data = apply_scaler(np.array(difference(data, interval=1)), scaler) #difference the history data to prepare next test sample
-	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2]))
-	# retrieve last observations for input data
-	input_x = data[-n_input:, 0]
-	# reshape into [1, n_input, 1]
-	input_x = input_x.reshape((1, len(input_x), 1))
-	# forecast the next week on the differenced data
-	yhat = model.predict(input_x, verbose=0)
-	#yhat = invert_scale(scaler, yhat) #invert the scale back to differenced only
-	#yhat = yhat[0]
-	return invert_scale(scaler, yhat)
-
 	# evaluate a single model
-def evaluate_model(df, n_input, n_out):
+def evaluate_model(df, n_input, n_out, train_pct, interval):
 
-	train, test = split_dataset(df, 0.7)
-	model, scaler = build_model(train, test, n_input, n_out)
+	train, test = aapl.split_dataset(df, train_pct)
+	model, scaler = build_model(train, test, n_input, n_out, interval)
 	history = [x for x in train]
 
 	# walk-forward validation over each week
 	predictions, actuals, predictions_ff = list(), list(), list()
-	#predictions, actuals, predictions_ff, temp_yhat, temp_nstart = list(), list(), list(), list(), list()
-	#predictions_diff, act_inv = list(), list()
 	n_start = n_input
 	for i in range(len(test)):
 		# predict the week
-		yhat_sequence = forecast(model, history, n_input, scaler)
+		yhat_sequence = aapl.forecast(model, history, n_input, scaler, interval)
 
 		# store the predictions
-		##predictions_diff.append(yhat_sequence) #can remove
 		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
 
@@ -195,8 +96,6 @@ def evaluate_model(df, n_input, n_out):
 		n_end = n_start + n_out
 		if n_end <= len(test): #Allows for the EoF
 			actuals.append(test[n_start:n_end, :, 0])
-			#temp_yhat.append(yhat_sequence)
-			#temp_nstart.append(test[n_start - 1, :, 0])
 			predictions.append(test[n_start - 1:n_end - 1, :, 0].flatten() + yhat_sequence)
 
 		#Tested and working - day before first prediction day. This is the basis to predicting all 5 days:
@@ -216,54 +115,8 @@ def evaluate_model(df, n_input, n_out):
 	predictions_ff = predictions_ff.reshape(-1, predictions_ff.shape[1])
 	predictions_ff = predictions_ff[:, 1:] #takes columns 1 - n_out, since the above sequence appends column 0 before the cumulative
 
-	#temp_yhat = array(temp_yhat)
-	#temp_nstart = array(temp_nstart)
-
-
-	#predictions_diff = array(predictions_diff) #can remove
-	#act_inv = array(act_inv)
 	score, scores = evaluate_forecasts(actuals, predictions)
 	return score, scores, actuals, predictions, history, predictions_ff
-
-
-def process_data(ticker):
-
-	headers = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/headers.csv')
-	df = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
-	df.index.name = 'date'
-
-	df.reset_index(inplace=True)  # temporarily reset the index to get the week day for OHE
-	df['date'] = pd.to_datetime(df['date'])
-	df.drop_duplicates(['date', 'ticker', 'close'], inplace=True)
-	df['day'] = list(map(lambda x: datetime.weekday(x), df['date']))  # adds the numeric day for OHE
-	df.set_index('date', inplace=True)  # set the index back to the date field
-
-	# use pd.concat to join the new columns with your original dataframe
-	df = pd.concat([df,pd.get_dummies(df['day'],prefix='day',drop_first=True)],axis=1)
-
-	df_close = df[df['ticker'] == ticker].sort_index(ascending=True)
-
-	df_close = df_close.drop(['adj close', 'day', 'ticker',
-						'volume_delta', 'prev_close_ch', 'prev_volume_ch', 'macds', 'macd', 'dma', 'macdh', 'ma200'],
-					   axis=1)
-	df_close = df_close.sort_index(ascending=True, axis=0)
-
-	# Move the target variable to the end of the dataset so that it can be split into X and Y for Train and Test
-	cols = list(df_close.columns.values)  # Make a list of all of the columns in the df
-	cols.pop(cols.index('close'))  # Remove outcome from list
-	df_close = df_close[['close'] + cols]  # Create new dataframe with columns in correct order
-
-	df_close = df_close.dropna()
-
-	fig, axes = plt.subplots (figsize=(16, 8))
-		# Define the date format
-	axes.xaxis.set_major_locator (mdates.MonthLocator (interval=6))  # to display ticks every 3 months
-	axes.xaxis.set_major_formatter (mdates.DateFormatter ('%Y-%m'))  # to set how dates are displayed
-	axes.set_title (ticker)
-	axes.plot (df_close.index, df_close [ 'close' ], linewidth=3)
-	plt.show ()
-
-	return df_close
 
 
 	#Test Set###############
@@ -274,18 +127,21 @@ def process_data(ticker):
 	#dataset = pd.DataFrame(X.reshape(X.shape[0], 1))
 	#End Test Set###########
 
-dataset = process_data('AAPL')
 
+aapl = cl.prepare_univariate_rnn('AAPL') #instantiate the object
+ds = aapl.process_data()
+ds_array = np.array(ds.iloc[:, 0])
+df = aapl.reshape_dataset(ds_array, 1)
 
-
-#Pulls the close column only and reshapes using a one interval step
-dataset_array = np.array(dataset.iloc[:, 0]) #dataset.iloc[:, 0]
-df = reshape_dataset(dataset_array, 1)
 
 # evaluate model and get scores
 n_input = 15
 n_out = 5
-score, scores, actuals, predictions, history, predictions_ff = evaluate_model(df, n_input, n_out)
+train_pct = 0.7
+interval = 1
+
+
+score, scores, actuals, predictions, history, predictions_ff = evaluate_model(df, n_input, n_out, train_pct, interval)
 # summarize scores
 summarize_scores('cnn', score, scores)
 # plot scores
@@ -316,3 +172,4 @@ plt.plot (pred[-1:, :].flatten(), color='orange', label='prediction')
 plt.plot(pred_ff[-1:, :].flatten(), color='red', label='prediction ff')
 plt.legend()
 plt.show ()
+
