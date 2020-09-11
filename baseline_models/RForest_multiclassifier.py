@@ -68,7 +68,7 @@ min_samples_leaf = [1, 2, 4]
 bootstrap = [True, False]
 # Create the random grid
 
-n_components = [330, 100] #this is for PCA() - best course of action appears to be normalization of the data
+n_components = [20, 30, 50, 100, 300, 330] #this is for PCA() - best course of action appears to be normalization of the data
 
 #np.unique(encoded_y)
 class_weights = compute_class_weight('balanced', np.unique(y_train), y_train)
@@ -109,8 +109,8 @@ plt.show()
 rf_pipeline = Pipeline(steps=
 [
     #('scaler',RobustScaler()),
-    ('scaler',MinMaxScaler()),
-	#('pca', PCA(n_components=25)),
+    ('scaler',RobustScaler()),
+	#('pca', PCA()),
     ('kc', rf_classifier)
 ])
 
@@ -132,19 +132,42 @@ random_grid = {'n_estimators': n_estimators,
 '''
 
 rf_validator = RandomizedSearchCV(estimator = rf_pipeline,
-								  cv=2,
+								  cv=3,
 								  param_distributions=random_grid,
-								  n_iter = 5,
+								  n_iter = 30,
 								  verbose=0,
 								  random_state=42,
-								  n_jobs=-1)
+								  n_jobs=1)
 
 rf_validator.fit(X_train, y_train)
 aapl_reg.get_results(rf_validator, X_test, y_test, encoder)
 
+'''
+{'kc__n_estimators': 800, 'kc__min_samples_split': 2, 'kc__min_samples_leaf': 1, 'kc__max_features': 'sqrt', 
+ 'kc__max_depth': 20, 'kc__bootstrap': False}
+Pipeline(steps=[('scaler', RobustScaler()),
+                ('kc',
+                 RandomForestClassifier(bootstrap=False,
+                                        class_weight={0: 0.7943217665615142,
+                                                      1: 0.9291512915129151,
+                                                      2: 0.5159836065573771,
+                                                      3: 3.3131578947368423,
+                                                      4: 2.353271028037383},
+                                        criterion='entropy', max_depth=20,
+                                        max_features='sqrt', n_estimators=800,
+                                        random_state=42))])
 
-
-
+Balanced Accuracy Score (Overall): 
+0.5281114056513132
+Balanced Crosstab Rank (Overall): 
+Predicted  +/-1%  1-5% Down  1-5% Up  5+% Down  5+% Up
+Actual                                                
++/-1%         57         18       51         1       2
+1-5% Down     26         69       27         7       0
+1-5% Up       28         12      157         1       7
+5+% Down       1         12        3        12       0
+5+% Up         0          0       26         0      23
+'''
 
 
 
@@ -154,53 +177,6 @@ aapl_reg.get_results(rf_validator, X_test, y_test, encoder)
 
 #sample_weights = compute_sample_weight('balanced', y_train)
 #rf_validator.fit(X_train, y_train, sample_weight=sample_weights)
-
-
-
-print('The parameters of the best model are: ')
-        print(model.best_params_)
-        results = model.cv_results_
-
-        best_model = model.best_estimator_
-        print(best_model)
-
-        yhat = best_model.predict(X_test)
-        yhat_proba = best_model.predict_proba(X_test)
-
-        yhat_inv = self.decode_yhat(yhat, yhat_proba, encoder)
-
-        y_inv = self.decode_y(y_test, encoder)
-        df_inv = pd.concat([yhat_inv, y_inv], axis=1)
-
-        df_inv['rank'] = df_inv.groupby(['y_label'])['yhat_proba'].transform(
-            lambda x: pd.qcut(x, 5, labels=range(1, 6)))
-
-        df_inv['rank'] = df_inv['rank'].astype('int32')
-
-        print(
-            'Balanced Accuracy Score (Overall): \n' + str(
-                balanced_accuracy_score(df_inv['y_label'], df_inv['yhat_label'])))
-        print('Balanced Crosstab Rank (Overall): \n' + str(
-            pd.crosstab(df_inv['y_label'], df_inv['yhat_label'], rownames=['Actual'], colnames=['Predicted'])))
-
-        rcount = list(df_inv['rank'].unique())
-        for i in range(1, len(rcount) + 1):
-            df = df_inv[df_inv['rank'] == i]
-            print('Balanced Accuracy Score Rank \n' + str(i) + ' ' + str(
-                balanced_accuracy_score(df['y_label'], df['yhat_label'])))
-            print('Balanced Crosstab Rank \n' + str(i) + ' ' + str(
-                pd.crosstab(df['y_label'], df['yhat_label'], rownames=['Actual'], colnames=['Predicted'])))
-
-
-
-
-
-
-
-
-
-
-
 
 
 #Now re-fit the classifier using the best parameters and against all of the data
@@ -214,7 +190,7 @@ final_rf_classifier = RandomForestClassifier(bootstrap=False, criterion='entropy
 
 final_rf_pipeline = Pipeline([
     ('scaler',RobustScaler()),
-	('pca', PCA(n_components=0.97)),
+	#('pca', PCA(n_components=0.97)),
     ('kc', final_rf_classifier)
 ])
 
