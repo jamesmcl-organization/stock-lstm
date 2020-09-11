@@ -1,167 +1,344 @@
-# univariate multi-step cnn for the power usage dataset
-from math import sqrt
-from numpy import split, array
-from pandas import read_csv
-from sklearn.metrics import mean_squared_error
 from matplotlib import pyplot as plt
-from keras.models import Sequential
-from keras.layers import Dense, Flatten
-from keras.layers.convolutional import Conv1D, MaxPooling1D
-from sklearn.preprocessing import  StandardScaler, MinMaxScaler, RobustScaler
+import seaborn as sns
+
 import pandas as pd
 import numpy as np
 import matplotlib.dates as mdates
 from datetime import datetime, date
+from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split, cross_val_score, KFold, StratifiedKFold, GridSearchCV, RandomizedSearchCV
+from sklearn.pipeline import Pipeline
+
+from tensorflow.keras.optimizers import Adam, SGD, RMSprop
+from keras.models import Sequential
+from keras.layers import Dense, Flatten, Dropout
+from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
+from keras.utils import np_utils
+from keras.regularizers import l1, l2, l1_l2
+from keras.initializers import glorot_uniform, zeros, glorot_normal
+from keras import initializers
+from keras.constraints import maxnorm
+from sklearn.pipeline import Pipeline
+from sklearn.svm import SVC
+from sklearn.decomposition import PCA
+from sklearn.utils.class_weight import compute_class_weight, compute_sample_weight
+from sklearn.metrics import classification_report, multilabel_confusion_matrix, balanced_accuracy_score
+
 from importlib import reload
 import equity_classes
 reload(equity_classes)
 from equity_classes import classes as cl
-from sklearn.model_selection import train_test_split
+CUDA_VISIBLE_DEVICES=0, 1
 
 
-def reshape_dataset(data, timesteps):
-	'''timesteps here should be set to 1 - for simplicity
-	returns the input but in 3D form in equal spaced timesteps'''
+def get_exp_charts(data):
+	'''plots 3 charts:
+	Plot 1: histogram of the % change distribution across all categories
+	Plot 2: Bar chart counting each category
+	Plot 3: histogram grouped by each category'''
+	sns.distplot(data.iloc[:, 0], kde=True, bins=100).set_title(data.columns[0])
+	plt.show()
 
-	leftover = data.shape[0] % timesteps  # Reduce the data to a number divisible by 5
-	data_sub = data[leftover:]
-	data_sub = array(split(data_sub, len(data_sub) / timesteps))
+	sns.countplot(x=data.iloc[:, 1], data=data).set_title(data.columns[0])
+	plt.show()
 
-	#If univariate input, returns reshaped from 2d to 3d - otherwise, returns 3d
-	if data_sub.ndim == 2:
-		return data_sub.reshape(data_sub.shape[0], data_sub.shape[1], 1)
-	else:
-		return data_sub
+	fig = plt.figure(figsize=(8, 4))
 
-
-# convert history into inputs and outputs - includes previous day
-def to_supervised(train, n_input, n_out):
-	# flatten data
-	data = train.reshape((train.shape[0]*train.shape[1], train.shape[2]))
-	X, y = list(), list()
-	in_start = 0
-	# step over the entire history one time step at a time
-	for _ in range(len(data)):
-		# define the end of the input sequence
-		in_end = in_start + n_input
-		out_end = in_end + n_out
-		# ensure we have enough data for this instance
-		if out_end <= len(data):
-			X.append(data[in_start:in_end, :])
-			y.append(data[in_end-1:out_end, 0]) #slightly different behavior here than the equivalent
-			#classes function. This includes the previous day as well.
-		# move along one time step
-		in_start += 1
-	return array(X), array(y)
+	labels = data.iloc[:, 1].unique()
+	for i in labels:
+		sns.distplot(data[data.iloc[:, 1] == i].iloc[:, 0], kde=False, bins=25)
+	fig.legend(labels=labels)
+	plt.show()
 
 
-def reshape_X_classical(data):
-	return data.reshape(data.shape[0], data.shape[1] * data.shape[2])
+def encode_y(data):
+	y = data.iloc[:, 1]
+	encoder = LabelEncoder()
+	encoder.fit(y)
+	encoded_y = encoder.transform(y) #would be sufficient for a binary classifier
+	# convert integers to dummy variables (i.e. one hot encoded) - because of multi-classification
+	dummy_y = np_utils.to_categorical(encoded_y)
+	return dummy_y, encoded_y, encoder
 
 
-def reshape_y_classical(data, n_out=5):
-	'''This function takes the y output from to_supervised
-	as well as the number of steps. It then calculates the
-	% change for t against t-1. t0 looks at t(0-1). A cumulative
-	% change is then calculated and 5 values are outputted as expected.'''
-	pct_cume = []
-	df = np.array(pd.DataFrame(data).pct_change(axis=1).iloc[:, 1:])
+def decode_y(y, encoder):
+	'''Takes the dummy_y and returns the original label'''
+	#inv_encode = encoder.inverse_transform(np.argmax(y, axis=-1))
+	inv_encode = encoder.inverse_transform(y)
+	return pd.DataFrame({'y_label': inv_encode})
 
-	for i in range(len(df)):
-		pct_cume.append([sum(df[i, 0:x:1]) for x in range(0, n_out + 1)])
-
-	return np.array(pct_cume)[:, 1:]
-
-
-def create_scaler(train):
-	s0, s1 = train.shape[0], train.shape[1]
-	# train = train.reshape(s0 * s1, s2)
-	scaler = RobustScaler()
-	# scaler = MinMaxScaler(-1,1)
-	scaler = scaler.fit(train)
-	train = scaler.fit_transform(train)
-	train_scale = train.reshape(s0, s1, 1)
-
-	return train_scale, scaler
+def decode_yhat(yhat, encoder):
+	'''Takes the y and returns the original label and the max probability for the classifier
+	Can be applied to yhat output or the dummy_y - columns will require renaming'''
+	inv_encode = encoder.inverse_transform(np.argmax(yhat, axis=-1))
+	inv_proba = np.max(yhat, axis=-1)
+	return pd.DataFrame({'yhat_proba': inv_proba, 'yhat_label': inv_encode})
 
 
-def apply_scaler(test, scaler):
-	s0, s1 = test.shape[0], test.shape[1]
-	# test = test.reshape(s0 * s1, s2)
-	test = scaler.transform(test)
-	test_scale = test.reshape(s0, s1, 1)
 
-	return test_scale
+aapl_reg = cl.prepare_classical('AAPL') #instantiate the object
+dataset = aapl_reg.process_data()
+dataset = dataset.drop(['adj close', 'day', 'ticker'], axis=1)
+df_reshape = aapl_reg.reshape_dataset(np.array(dataset), 1)
 
-
-# inverse scaling for a forecasted value
-def invert_scale(self, scaler, yhat):
-	inverted = scaler.inverse_transform(yhat)
-	return inverted[0, :]
-
-def process_data(ticker):
-
-	headers = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/headers.csv')
-	df = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
-	df.index.name = 'date'
-
-	df.reset_index(inplace=True)  # temporarily reset the index to get the week day for OHE
-	df['date'] = pd.to_datetime(df['date'])
-	df.drop_duplicates(['date', 'ticker', 'close'], inplace=True)
-	df['day'] = list(map(lambda x: datetime.weekday(x), df['date']))  # adds the numeric day for OHE
-	df.set_index('date', inplace=True)  # set the index back to the date field
-
-	# use pd.concat to join the new columns with your original dataframe
-	df = pd.concat([df,pd.get_dummies(df['day'],prefix='day',drop_first=True)],axis=1)
-
-	df_close = df[df['ticker'] == ticker].sort_index(ascending=True)
-
-	df_close = df_close.drop(['adj close', 'day', 'ticker'], axis=1)
-	df_close = df_close.sort_index(ascending=True, axis=0)
-
-	# Move the target variable to the end of the dataset so that it can be split into X and Y for Train and Test
-	cols = list(df_close.columns.values)  # Make a list of all of the columns in the df
-	cols.pop(cols.index('close'))  # Remove outcome from list
-	df_close = df_close[['close'] + cols]  # Create new dataframe with columns in correct order
-
-	df_close = df_close.dropna()
-
-	fig, axes = plt.subplots (figsize=(16, 8))
-		# Define the date format
-	axes.xaxis.set_major_locator (mdates.MonthLocator (interval=6))  # to display ticks every 3 months
-	axes.xaxis.set_major_formatter (mdates.DateFormatter ('%Y-%m'))  # to set how dates are displayed
-	axes.set_title (ticker)
-	axes.plot (df_close.index, df_close [ 'close' ], linewidth=3)
-	plt.show ()
-
-	return df_close
+X, y = aapl_reg.to_supervised_classical(df_reshape, 15, 5)
 
 
-dataset = process_data('AAPL')
+X_classical = pd.DataFrame(aapl_reg.reshape_X_classical(X)) #Reshapes X into 1 row and all columns for the features
+y_classical = aapl_reg.reshape_y_classical(y, n_out=5) #Reshapes y to calculate % change
 
-df_reshape = reshape_dataset(np.array(dataset), 1)
-X, y = to_supervised(df_reshape, 15, 5)
 
-X_classical = pd.DataFrame(reshape_X_classical(X)) #Reshapes X into 1 row and all columns for the features
-y_classical = reshape_y_classical(y, n_out=5) #Reshapes y to calculate % change
+nday_chg, intraday_max = aapl_reg.get_chg_pc(y_classical)
 
-X_train, X_test, y_train, y_test = train_test_split(X_classical, y_classical, test_size=0.3, random_state=101)
+nday_chg_label = pd.DataFrame.from_records(aapl_reg.get_chg_pc_label(nday_chg), columns = ['nday_chg', 'nday_chg_label'])
+intraday_max_label = pd.DataFrame.from_records(aapl_reg.get_chg_pc_label(intraday_max), columns = ['intraday_max', 'intraday_max_label'])
+
+
+get_exp_charts(nday_chg_label)
+get_exp_charts(intraday_max_label)
+
+
+
+dummy_y, encoded_y, encoder = encode_y(nday_chg_label)
+
+X_train, X_test, y_train, y_test = train_test_split(X_classical, encoded_y, test_size=0.3, random_state=101)
 
 print(X_train.shape)
 print(X_test.shape)
 print(y_train.shape)
 print(y_test.shape)
 
-train_scale, scaler = create_scaler(X_train) #creates the scaler on train
-test_scale = apply_scaler(X_test, scaler) #applies the scaler to test
+# Function to create model, required for KerasClassifier
+def create_model(n_nodes=100, n_lr=0.001, batch_size=16,
+		init='uniform', epochs=50, dropout=0.5, activation='tanh',
+		n_input=X_train.shape[1], n_out=5):
 
-y_label = []
-for i in range(len(y_classical)):
-	try:
-		if y_classical[i, :].max() >= 0.05:
-			y_label.append('Upweek')
-		else:
-			y_label.append('Shit week')
-	break
+#n_out=y_train.shape[1],
+	model = Sequential()
+	model.add(Dense(units=n_nodes, input_dim=n_input, kernel_initializer=init, activation=activation))
+	model.add(Dropout(dropout))
+	model.add(Dense(units=n_nodes // 2, kernel_initializer=init, activation=activation))
+	model.add(Dropout(dropout))
+	model.add(Dense(n_out, activation='softmax'))
+	# Compile model
+	decay_rate = n_lr / epochs
+	# opt = optimizer_val(lr=n_lr, decay=decay_rate, beta_1=0.9, beta_2=0.999, amsgrad=False)
+	ADAM = Adam(lr=n_lr, decay=decay_rate, beta_1=0.9, beta_2=0.999, amsgrad=False)
+	model.compile(optimizer=ADAM, loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+	#model.fit(X, y, epochs=n_epochs, batch_size=n_batch, verbose=1)
+	return model
 
 
+param_grid = \
+	{
+'n_nodes': [50, 100, 200, 300],
+'n_lr': [0.005, 0.01, 0.05, 0.10, 0.001],
+'batch_size':[16, 32, 64, 128, 256],
+'init':['uniform', 'normal', 'zeros'],
+'activation': ['tanh', 'relu'],
+'epochs':[100, 200, 300],
+'dropout': [0.5, 0.2, 0.1, 0]
+}
+
+my_classifier = KerasClassifier(build_fn=create_model, verbose=0)
+
+
+
+pipeline = Pipeline([
+    ('scaler',RobustScaler()),
+	('pca', PCA(n_components=0.97)),
+    ('kc', KerasClassifier(build_fn=create_model, verbose=1))
+])
+
+
+
+
+# The scorers can be either be one of the predefined metric strings or a scorer
+# callable, like the one returned by make_scorer
+from sklearn.metrics import make_scorer, f1_score, accuracy_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score
+
+scorer = {'accuracy': make_scorer(accuracy_score),
+           #'precision': make_scorer(precision_score, average = 'macro'),
+           'recall': make_scorer(recall_score, average = 'macro'),
+           'f1_macro': make_scorer(f1_score, average = 'macro'),
+           'f1_weighted': make_scorer(f1_score, average = 'weighted')}
+
+
+validator = RandomizedSearchCV(my_classifier,
+						 cv=3,
+                         param_distributions=param_grid,
+						n_iter = 35,
+						 n_jobs=-1,
+						scoring=scorer,
+						refit='f1_weighted',
+						return_train_score=True)
+
+
+
+sample_weights = compute_sample_weight('balanced', y_train)
+validator.fit(X_train, y_train, sample_weight=sample_weights)
+
+
+################Model Summary and Parameters####################################
+print('The parameters of the best model are: ')
+print(validator.best_params_)
+results = validator.cv_results_
+
+best_model = validator.best_estimator_.model
+metric_names = best_model.metrics_names
+metric_values = best_model.evaluate(X_test, y_test)
+for metric, value in zip(metric_names, metric_values):
+    print(metric, ': ', value)
+
+'''{'n_nodes': 100, 'n_lr': 0.001, 'init': 'uniform', 'epochs': 200, 'dropout': 0, 'batch_size': 32, 'activation': 'tanh'}
+17/17 [==============================] - 0s 742us/step - loss: 2.2520 - accuracy: 0.2900
+loss :  2.2519631385803223
+accuracy :  0.2899628281593323'''
+
+
+# the result is also a binary label matrix
+yhat = best_model.predict(X_test)
+yhat_inv = decode_yhat(yhat, encoder)
+#np.argmax(model.predict(x), axis=-1)
+
+y_inv = decode_y(y_test, encoder)
+df_inv = pd.concat([yhat_inv, y_inv], axis=1)
+
+multilabel_confusion_matrix(df_inv['y_label'], df_inv['yhat_label'])
+
+df_inv['rank'] = df_inv.groupby(['y_label'])['yhat_proba'].transform(
+                     lambda x: pd.qcut(x, 5, labels=range(1,6)))
+
+df_inv['rank'] = df_inv['rank'].astype('int32')
+
+print('Multilabel Confusion Matrix (Overall): ' + str(multilabel_confusion_matrix(df_inv['y_label'], df_inv['yhat_label'])))
+print('Balanced Accuracy Score (Overall): ' + str(balanced_accuracy_score(df_inv['y_label'], df_inv['yhat_label'])))
+
+rcount = list(df_inv['rank'].unique())
+for i in range(1,len(rcount)+1):
+	df = df_inv[df_inv['rank'] == i]
+	print('Balanced Accuracy Score Rank' + str(i) + ' ' + str(balanced_accuracy_score(df['y_label'], df['yhat_label'])))
+
+
+
+
+
+
+X_train, X_test, y_train, y_test = train_test_split(X_classical, y_label_df['change_label'], test_size=0.3, random_state=101)
+
+print(X_train.shape)
+print(X_test.shape)
+print(y_train.shape)
+print(y_test.shape)
+
+
+
+# Number of trees in random forest
+n_estimators = [int(x) for x in np.linspace(start = 200, stop = 2000, num = 10)]
+# Number of features to consider at every split
+max_features = ['auto', 'sqrt']
+# Maximum number of levels in tree
+max_depth = [int(x) for x in np.linspace(10, 110, num = 11)]
+max_depth.append(None)
+# Minimum number of samples required to split a node
+min_samples_split = [2, 5, 10]
+# Minimum number of samples required at each leaf node
+min_samples_leaf = [1, 2, 4]
+# Method of selecting samples for training each tree
+bootstrap = [True, False]
+# Create the random grid
+random_grid = {'n_estimators': n_estimators,
+               'max_features': max_features,
+               'max_depth': max_depth,
+               'min_samples_split': min_samples_split,
+               'min_samples_leaf': min_samples_leaf,
+               'bootstrap': bootstrap}
+
+
+rf_classifier = RandomForestClassifier(n_estimators = 100, criterion = 'entropy', random_state = 42)
+
+rf_pipeline = Pipeline([
+    ('scaler',RobustScaler()),
+	('pca', PCA(n_components=0.97)),
+    ('kc', rf_classifier)
+])
+
+
+
+rf_validator = RandomizedSearchCV(estimator = rf_classifier,
+						 cv=3,
+                         param_distributions=random_grid,
+						n_iter = 50,
+								  verbose=2,
+								  random_state=42,
+						 n_jobs=-1)
+
+
+
+sample_weights = compute_sample_weight('balanced', y_train)
+# Fit the random search model
+rf_validator.fit(X_train, y_train)
+
+
+print('The parameters of the best model are: ')
+print(rf_validator.best_params_)
+
+
+def evaluate(model, X_test, y_test):
+	predictions = model.predict(X_test)
+	errors = abs(predictions - y_test)
+	mape = 100 * np.mean(errors / y_test)
+	accuracy = 100 - mape
+	print('Model Performance')
+	print('Average Error: {:0.4f} degrees.'.format(np.mean(errors)))
+	print('Accuracy = {:0.2f}%.'.format(accuracy))
+
+	return accuracy
+
+
+base_model = RandomForestClassifier(n_estimators=10, random_state=42)
+base_model.fit(X_train, y_train)
+base_accuracy = evaluate(base_model, X_test, y_test)
+
+
+best_random = rf_validator.best_estimator_
+random_accuracy = evaluate(best_random, X_test, y_test)
+
+
+
+print('Improvement of {:0.2f}%.'.format( 100 * (random_accuracy - base_accuracy) / base_accuracy))
+
+
+
+
+
+
+
+# {'n_nodes': 200, 'n_lr': 0.005, 'init': 'normal', 'epochs': 200,
+# 'dropout': 0.1, 'batch_size': 64, 'activation': 'tanh'}
+# validator.best_estimator_ returns sklearn-wrapped version of best model.
+# validator.best_estimator_.model returns the (unwrapped) keras model
+best_model = validator.best_estimator_.model
+metric_names = best_model.metrics_names
+metric_values = best_model.evaluate(X_train, y_train)
+for metric, value in zip(metric_names, metric_values):
+    print(metric, ': ', value)
+
+
+
+
+# Predicting the Test set results
+y_pred = classifier.predict(X_test)
+#Reverse factorize (converting y_pred from 0s,1s and 2s to Iris-setosa, Iris-versicolor and Iris-virginica
+reversefactor = dict(zip(range(6),definitions))
+y_test = np.vectorize(reversefactor.get)(y_test)
+y_pred = np.vectorize(reversefactor.get)(y_pred)
+# Making the Confusion Matrix
+print(pd.crosstab(y_test, y_pred, rownames=['Actual Species'], colnames=['Predicted Species']))
+
+from sklearn.metrics import classification_report
+print(classification_report(y_test, y_pred))
+'''

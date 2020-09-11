@@ -5,8 +5,10 @@ from pandas import read_csv
 from sklearn.metrics import mean_squared_error
 from matplotlib import pyplot as plt
 from keras.models import Sequential
-from keras.layers import Dense, Flatten
+from keras.layers import Dense, Flatten, Dropout
 from keras.layers.convolutional import Conv1D, MaxPooling1D
+from tensorflow.keras.optimizers import Adam
+from keras.constraints import maxnorm
 from sklearn.preprocessing import  StandardScaler, MinMaxScaler
 import pandas as pd
 import numpy as np
@@ -41,40 +43,41 @@ def summarize_scores(name, score, scores):
 	print('%s: [%.3f] %s' % (name, score, s_scores))
 
 	# train the model
-def build_model(train, test, n_input, n_out, interval):
+def build_model(train, test, config):
 
-	train_scale, scaler = aapl.create_scaler(np.array(aapl.get_difference(train, interval))) #creates the scaler on train
-	test_scale = aapl.apply_scaler(np.array(aapl.get_difference(test, interval)), scaler) #applies the scaler to test
+	n_input, n_nodes, n_epochs, n_batch, n_diff, n_out, n_lr, n_actfn = config
+
+	train_scale, scaler, y_scaler = aapl.create_scaler(np.array(aapl.get_difference(train, n_diff)))  # creates the scaler on train
+	test_scale = aapl.apply_scaler(np.array(aapl.get_difference(test, n_diff)), scaler, y_scaler)  # applies the scaler to test
 
 	train_x, train_y = aapl.to_supervised(train_scale, n_input, n_out)
 	test_x, test_y = aapl.to_supervised(test_scale, n_input, n_out)
 
 	# define parameters
-	verbose, epochs, batch_size = 1, 10, 4
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
 	# define model
 	model = Sequential()
-	model.add(Conv1D(16, 3, activation='tanh', input_shape=(n_timesteps,n_features)))
+	model.add(Conv1D(16, 3, activation=n_actfn, input_shape=(n_timesteps,n_features)))
 	model.add(MaxPooling1D())
 	model.add(Flatten())
-	model.add(Dense(10, activation='tanh'))
+	model.add(Dense(n_nodes, activation=n_actfn))
+	model.add(Dropout(0.2))
+	model.add(Dense(n_nodes//2, activation=n_actfn, kernel_constraint=maxnorm(3))) #impose constraint on the layer weights
 	model.add(Dense(n_outputs))
-	model.compile(loss='mse', optimizer='adam')
+	decay_rate = n_lr / n_epochs
+	ADAM = Adam(lr=n_lr, decay=decay_rate, beta_1=0.9, beta_2=0.999, amsgrad=False)
+	model.compile(loss='mse', optimizer=ADAM)
 	# fit network
-	model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose, validation_data=(test_x, test_y))
-
-	plt.plot(model.history.history [ 'loss' ], color='blue')
-	plt.plot(model.history.history [ 'val_loss' ], color='orange')
-	plt.title("Model Train vs Val Loss: ")
-	plt.legend(['train', 'validation'], loc='upper right')
+	model.fit(train_x, train_y, epochs=n_epochs, batch_size=n_batch, verbose=0, validation_data=(test_x, test_y))
 
 	return model, scaler
 
 	# evaluate a single model
-def evaluate_model(df, n_input, n_out, train_pct, interval):
+def evaluate_model(data, n_train, config):
 
-	train, test = aapl.split_dataset(df, train_pct)
-	model, scaler = build_model(train, test, n_input, n_out, interval)
+	n_input, n_nodes, n_epochs, n_batch, n_diff, n_out, n_lr, n_actfn = config
+	train, test = aapl.split_dataset(data, n_train)
+	model, scaler = build_model(train, test, config)
 	history = [x for x in train]
 
 	# walk-forward validation over each week
@@ -82,7 +85,7 @@ def evaluate_model(df, n_input, n_out, train_pct, interval):
 	n_start = n_input
 	for i in range(len(test)):
 		# predict the week
-		yhat_sequence = aapl.forecast(model, history, n_input, scaler, interval)
+		yhat_sequence = aapl.forecast(model, history, n_input, scaler, n_diff)
 
 		# store the predictions
 		# get real observation and add to history for predicting the next n days using the forecast() function
@@ -96,7 +99,7 @@ def evaluate_model(df, n_input, n_out, train_pct, interval):
 		n_end = n_start + n_out
 		if n_end <= len(test): #Allows for the EoF
 			actuals.append(test[n_start:n_end, :, 0])
-			predictions.append(test[n_start - 1:n_end - 1, :, 0].flatten() + yhat_sequence)
+			predictions.append(test[n_start - n_diff:n_end - n_diff, :, 0].flatten() + yhat_sequence)
 
 		#Tested and working - day before first prediction day. This is the basis to predicting all 5 days:
 		# prediction day - 1 + tomorrow's difference yhat = tomorrow's prediction
@@ -104,7 +107,7 @@ def evaluate_model(df, n_input, n_out, train_pct, interval):
 		# And so on until the number of days is achieved - based on day 1 - given that will not have
 		# ground truth in production but will have to base 5 day predictions off day 1 changes onward.
 		# Finally, this outputs n_out+1. To finalize the predictions, we take predictions_ff[:, 1:]
-			predictions_ff.append(test[n_start - 1, :, 0]  + [sum(yhat_sequence[0:x:1]) for x in range(0, n_out+1)])
+			predictions_ff.append(test[n_start - n_diff, :, 0]  + [sum(yhat_sequence[0:x:1]) for x in range(0, n_out+1)])
 		n_start += 1
 
 	# evaluate predictions days for each week
@@ -116,23 +119,58 @@ def evaluate_model(df, n_input, n_out, train_pct, interval):
 	predictions_ff = predictions_ff[:, 1:] #takes columns 1 - n_out, since the above sequence appends column 0 before the cumulative
 
 	score, scores = evaluate_forecasts(actuals, predictions)
-	return score, scores, actuals, predictions, history, predictions_ff
+	#return score, scores, actuals, predictions, history, predictions_ff
+	return scores
+
+# score a model, return None on failure
+def repeat_evaluate(data, config, n_train, n_repeats=3):
+	# convert config to a key
+	key = str(config)
+	# fit and evaluate the model n times
+	#scores = [walk_forward_validation(data, n_test, config) for _ in range(n_repeats)]
+	scores = [evaluate_model(data, n_train, config)  for _ in range(n_repeats)]
+	# summarize score from the repeats of each config
+	result = np.mean(scores)
+	print('> Model[%s] %.3f' % (key, result))
+	return (key, result)
+
+# grid search configs
+def grid_search(data, cfg_list, n_train):
+	# evaluate configs
+	scores = [repeat_evaluate(data, cfg, n_train) for cfg in cfg_list]
+	# sort configs by error, asc
+	scores.sort(key=lambda tup: tup[1])
+	return scores
 
 
-	#Test Set###############
-	#Only use this code if testing for accuracy
-	#import random
-	#X = np.array([random.randint(1,500) for x in range(0,1000)])
-	#X.sort()
-	#dataset = pd.DataFrame(X.reshape(X.shape[0], 1))
-	#End Test Set###########
 
-
-aapl = cl.prepare_univariate_rnn('AAPL') #instantiate the object
+aapl = cl.parent_rnn('AAPL') #instantiate the object
 ds = aapl.process_data()
+ds = ds.drop(['adj close', 'day', 'ticker','volume_delta', 'prev_close_ch', 'prev_volume_ch',
+			  'macds', 'macd', 'dma', 'macdh', 'ma200'], axis=1)
 ds_array = np.array(ds.iloc[:, 0])
-df = aapl.reshape_dataset(ds_array, 1)
+data = aapl.reshape_dataset(ds_array, 1)
 
+n_train = 0.8
+#Current best config:
+#s> Model[[10, 100, 50, 16, 1, 5, 0.01, 'tanh']] 1.682
+done
+[10, 200, 50, 16, 1, 5, 0.01, 'tanh'] 1.6815384042055064
+[10, 100, 50, 16, 1, 5, 0.01, 'tanh'] 1.6821808161519798
+[10, 200, 50, 32, 1, 5, 0.01, 'tanh'] 1.6839785408823176
+[10, 100, 50, 32, 1, 5, 0.01, 'tanh'] 1.6913940884561074
+[15, 200, 50, 16, 1, 5, 0.01, 'tanh'] 1.6926291257685082
+
+
+
+cfg_list = cl.model_configs()
+
+scores = grid_search(data, cfg_list, n_train)
+print('done')
+
+#list top configs
+for cfg, error in scores[:5]:
+	print(cfg, error)
 
 # evaluate model and get scores
 n_input = 15
@@ -141,7 +179,7 @@ train_pct = 0.7
 interval = 1
 
 
-score, scores, actuals, predictions, history, predictions_ff = evaluate_model(df, n_input, n_out, train_pct, interval)
+#score, scores, actuals, predictions, history, predictions_ff = evaluate_model(df, n_input, n_out, train_pct, interval)
 # summarize scores
 summarize_scores('cnn', score, scores)
 # plot scores
