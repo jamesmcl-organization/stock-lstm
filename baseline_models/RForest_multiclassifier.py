@@ -70,66 +70,28 @@ bootstrap = [True, False]
 
 n_components = [20, 30, 50, 100, 300, 330] #this is for PCA() - best course of action appears to be normalization of the data
 
-#np.unique(encoded_y)
 class_weights = compute_class_weight('balanced', np.unique(y_train), y_train)
 weights_dict = dict(enumerate(class_weights))
 
-#from imblearn.ensemble import BalancedRandomForestClassifier
-
 rf_classifier = RandomForestClassifier(criterion = 'entropy', random_state = 42, class_weight=weights_dict)
-#rf_classifier = RandomForestClassifier(criterion = 'entropy', random_state = 42)
 
-'''
-The PCA() was showing ultimately very poor results. It should be properly tested with a 
-proper set of parameters. Using Normalizer might show the most promise.
 
-X_normalized = Normalizer(X, norm='l2')
-scaler = Normalizer()
-scaler = scaler.fit(X_train)
-train_scale = scaler.fit_transform(X_train)
-
-pca = PCA()
-pca.fit(train_scale)
-
-plt.figure(1, figsize=(16, 10))
-plt.clf()
-plt.axes([.2, .2, .7, .7])
-plt.plot(pca.explained_variance_, linewidth=2)
-plt.axis('tight')
-plt.xlabel('n_components')
-plt.ylabel('explained_variance_')
-plt.show()
-
-pca = PCA(2)
-low_d = pca.fit_transform(train_scale)
-plt.scatter(low_d[:,0], low_d[:,1])
-plt.show()
-'''
 
 rf_pipeline = Pipeline(steps=
 [
-    #('scaler',RobustScaler()),
     ('scaler',RobustScaler()),
 	#('pca', PCA()),
     ('kc', rf_classifier)
 ])
 
 random_grid = {
-                #'pca__n_components': n_components,
                 'kc__n_estimators': n_estimators,
                 'kc__max_features': max_features,
                 'kc__max_depth': max_depth,
                 'kc__min_samples_split': min_samples_split,
                 'kc__min_samples_leaf': min_samples_leaf,
                 'kc__bootstrap': bootstrap}
-'''
-random_grid = {'n_estimators': n_estimators,
-               'max_features': max_features,
-               'max_depth': max_depth,
-               'min_samples_split': min_samples_split,
-               'min_samples_leaf': min_samples_leaf,
-               'bootstrap': bootstrap}
-'''
+
 
 rf_validator = RandomizedSearchCV(estimator = rf_pipeline,
 								  cv=3,
@@ -175,17 +137,28 @@ Actual
 
 
 
-#sample_weights = compute_sample_weight('balanced', y_train)
-#rf_validator.fit(X_train, y_train, sample_weight=sample_weights)
-
-
 #Now re-fit the classifier using the best parameters and against all of the data
 #Make this as up to date as possible with data
 
-final_rf_classifier = RandomForestClassifier(bootstrap=False, criterion='entropy', max_depth=110,
-                       max_features='sqrt', min_samples_leaf=2,
-                       n_estimators=600, random_state=42,
-                        class_weight='balanced')
+class_weights = compute_class_weight('balanced', np.unique(encoded_y), encoded_y)
+weights_dict = dict(enumerate(class_weights))
+
+final_rf_classifier = RandomForestClassifier(class_weight=weights_dict)
+
+
+final_rf_classifier = RandomForestClassifier\
+    (
+    bootstrap=False,
+    criterion='entropy',
+    max_depth=20,
+    min_samples_split=2,
+    max_features='sqrt',
+    min_samples_leaf=1,
+    n_estimators=800,
+    random_state=42,
+    class_weight=weights_dict
+    )
+
 
 
 final_rf_pipeline = Pipeline([
@@ -195,10 +168,22 @@ final_rf_pipeline = Pipeline([
 ])
 
 
-
-final_rf_pipeline.fit(X_classical, encoded_y)
-
-final_rf_pipeline.evaluate(X_classical, encoded_y)
+#Fit the final model
+rf_multi = final_rf_pipeline.fit(X_classical, encoded_y)
 
 
+import joblib
+from keras.models import load_model
+from sklearn.externals import joblib
 
+#Dump the saved model
+joblib.dump(rf_multi, '/home/ubuntu/stock_lstm/saved_models/rf_multi.mod')
+
+#Load and predict from saved model
+model = joblib.load('/home/ubuntu/stock_lstm/saved_models/rf_multi.mod')
+#yhat = model.predict(X_classical)
+
+#To get this model working, do the following steps:
+
+1. set up a daily automated feed that provides the most recent day - append it to the history data set
+2. Prepare the last n_input days and feed through the model to get n_out

@@ -1,45 +1,27 @@
+#Review more moving to class then begin hyperp tuning
 # multi headed multi-step cnn
-import pandas as pd
 from math import sqrt
 from numpy import split, array
 from pandas import read_csv
 from sklearn.metrics import mean_squared_error
-from matplotlib import pyplot as plt
-from keras.models import Sequential, Model
-from keras.layers import Dense, Flatten, Input
-from keras.layers.convolutional import Conv1D, MaxPooling1D
 from keras.utils.vis_utils import plot_model
 from keras.layers.merge import concatenate
+from matplotlib import pyplot as plt
+from keras.models import Sequential, Model
+from keras.layers import Dense, Flatten, Dropout, Activation, Input
+from keras.layers.convolutional import Conv1D, MaxPooling1D
+from tensorflow.keras.optimizers import Adam
+from keras.constraints import maxnorm
+from sklearn.preprocessing import  StandardScaler, MinMaxScaler, RobustScaler
 import pandas as pd
 import numpy as np
 import matplotlib.dates as mdates
 from datetime import datetime, date
+from importlib import reload
+import equity_classes
+reload(equity_classes)
+from equity_classes import classes as cl
 
-
-def reshape_dataset(data, timesteps):
-	'''timesteps here should be set to 1 - for simplicity
-	returns the input but in 3D form in equal spaced timesteps'''
-
-	leftover = data.shape[0] % timesteps  # Reduce the data to a number divisible by 5
-	data_sub = data[leftover:]
-	data_sub = array(split(data_sub, len(data_sub) / timesteps))
-
-	#If univariate input, returns reshaped from 2d to 3d - otherwise, returns 3d
-	if data_sub.ndim == 2:
-		return data_sub.reshape(data_sub.shape[0], data_sub.shape[1], 1)
-	else:
-		return data_sub
-
-def split_dataset(data, train_pct):
-
-	'''performs the splitting of the already reshaped dataset'''
-
-	train_weeks = int(data.shape[0] * train_pct)
-	train, test = data[0:train_weeks, :, :], data[train_weeks:, :, :]
-
-	return train, test
-
-# evaluate one or more weekly forecasts against expected values
 def evaluate_forecasts(actual, predicted):
 	scores = list()
 	# calculate an RMSE score for each day
@@ -64,27 +46,6 @@ def summarize_scores(name, score, scores):
 	print('%s: [%.3f] %s' % (name, score, s_scores))
 
 
-
-# convert history into inputs and outputs
-def to_supervised(train, n_input, n_out):
-	# flatten data
-	data = train.reshape((train.shape[0]*train.shape[1], train.shape[2]))
-	X, y = list(), list()
-	in_start = 0
-	# step over the entire history one time step at a time
-	for _ in range(len(data)):
-		# define the end of the input sequence
-		in_end = in_start + n_input
-		out_end = in_end + n_out
-		# ensure we have enough data for this instance
-		if out_end <= len(data):
-			X.append(data[in_start:in_end, :])
-			y.append(data[in_end:out_end, 0])
-		# move along one time step
-		in_start += 1
-	return array(X), array(y)
-
-
 # plot training history
 def plot_history(history):
 	# plot loss
@@ -103,12 +64,24 @@ def plot_history(history):
 
 
 # train the model
-def build_model(train, n_input, n_out):
-	# prepare data
-	train_x, train_y = to_supervised(train, n_input, n_out)
+def build_model(train, test, config):
+	#config = cfg_list[0]
+	#n_diff=1
+
+	n_input, n_nodes, n_epochs, n_batch, n_diff, n_out, n_lr, n_actfn = config
+
+	train_scale, scaler, scaler_y = aapl.create_scaler(np.array(aapl.get_difference(train, n_diff)))
+	#x = np.array(aapl.get_difference(train, n_diff))
+	#a, b, c = aapl.create_scaler(x)
+	#train_scale, scaler, scaler_y = aapl.create_scaler(x)
+	test_scale = aapl.apply_scaler(np.array(aapl.get_difference(test, n_diff)), scaler,scaler_y)  # applies the scaler to test
+
+	train_x, train_y = aapl.to_supervised(train_scale, n_input, n_out)
+	test_x, test_y = aapl.to_supervised(test_scale, n_input, n_out)
+
 	# define parameters
-	verbose, epochs, batch_size = 1, 500, 32
 	n_timesteps, n_features, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
+
 	# create a channel for each variable
 	in_layers, out_layers = list(), list()
 	for _ in range(n_features): #Runs a model through for each one of the features
@@ -128,139 +101,114 @@ def build_model(train, n_input, n_out):
 	outputs = Dense(n_outputs)(dense2)
 	model = Model(inputs=in_layers, outputs=outputs)
 	# compile model
-	model.compile(loss='mse', optimizer='adam')
+	decay_rate = n_lr / n_epochs
+	ADAM = Adam(lr=n_lr, decay=decay_rate, beta_1=0.9, beta_2=0.999, amsgrad=False)
+	model.compile(loss='mse', optimizer=ADAM)
 	# plot the model
 	plot_model(model, show_shapes=True, to_file='multiheaded_cnn.png')
 	# fit network
-	input_data = [train_x[:,:,i].reshape((train_x.shape[0],n_timesteps,1)) for i in range(n_features)]
-	model.fit(input_data, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose)
-	return model
+	#input_data = [train_x[:,:,i].reshape((train_x.shape[0],n_timesteps,1)) for i in range(n_features)]
+	#model.fit(input_data, train_y, epochs=n_epochs, batch_size=n_batch, verbose=1)
 
-# make a forecast
-def forecast(model, history, n_input):
-	# flatten data
-	data = array(history)
-	data = data.reshape((data.shape[0]*data.shape[1], data.shape[2]))
-	# retrieve last observations for input data
-	input_x = data[-n_input:, :]
-	# reshape into n input arrays
-	input_x = [input_x[:,i].reshape((1,input_x.shape[0],1)) for i in range(input_x.shape[1])]
-	# forecast the next week
-	yhat = model.predict(input_x, verbose=0)
-	# we only want the vector forecast
-	yhat = yhat[0]
-	return yhat
+	input_train = [train_x[:, :, i].reshape((train_x.shape[0], n_timesteps, 1)) for i in range(n_features)]
+	input_test = [test_x[:, :, i].reshape((test_x.shape[0], n_timesteps, 1)) for i in range(n_features)]
+	# fit network
+	model.fit(input_train, train_y, epochs=n_epochs, batch_size=n_batch, verbose=0, validation_data=(input_test, test_y))
+
+	return model, scaler, scaler_y
 
 
-# evaluate a single model
-def evaluate_model(train, test, n_input, n_out):
-	# fit model
-	model = build_model(train, n_input, n_out)
-	# history is a list of weekly data
+
+	# evaluate a single model
+def evaluate_model(data, n_train, config):
+
+	#config = cfg_list[0]
+
+	n_input, n_nodes, n_epochs, n_batch, n_diff, n_out, n_lr, n_actfn = config
+	train, test = aapl.split_dataset(data, n_train)
+	model, scaler, scaler_y = build_model(train, test, config)
 	history = [x for x in train]
+
 	# walk-forward validation over each week
-	predictions, actuals = list(), list()
+	predictions, actuals, predictions_ff = list(), list(), list()
+	n_start = n_input
 	for i in range(len(test)):
 		# predict the week
-		yhat_sequence = forecast(model, history, n_input)
+		yhat_sequence = aapl.forecast_mh_cnn(model, history, n_input, scaler, scaler_y, n_diff)
+
 		# store the predictions
-		predictions.append(yhat_sequence)
-		# get real observation and add to history for predicting the next week
+		# get real observation and add to history for predicting the next n days using the forecast() function
 		history.append(test[i, :])
-		# This next step can come out once the model is confirmed. It pulls the actuals
-		########################################################################
-		n_start = n_input
+
+		'''predictions is pulled from the previous, undifferenced 5 test actuals, then added to the
+		differenced yhat sequence: predictions.append(test[n_start-1:n_end-1, :, 0].flatten() + yhat_sequence)
+		NB - if n_input=14, this is 15th iteration in the sequence. This is therefore correct for the next
+		5 days prediction after 14 timesteps:
+		actuals.append(test[n_start:n_end, :, 0])'''
 		n_end = n_start + n_out
-		if n_end <= len(test):  # Allows for the EoF
+		if n_end <= len(test): #Allows for the EoF
 			actuals.append(test[n_start:n_end, :, 0])
+			predictions.append(test[n_start - n_diff:n_end - n_diff, :, 0].flatten() + yhat_sequence)
+
+		#Tested and working - day before first prediction day. This is the basis to predicting all 5 days:
+		# prediction day - 1 + tomorrow's difference yhat = tomorrow's prediction
+		# Day 1 undifferenced prediction is now added to day 2's differenced yhat to get day 2
+		# And so on until the number of days is achieved - based on day 1 - given that will not have
+		# ground truth in production but will have to base 5 day predictions off day 1 changes onward.
+		# Finally, this outputs n_out+1. To finalize the predictions, we take predictions_ff[:, 1:]
+			predictions_ff.append(test[n_start - n_diff, :, 0]  + [sum(yhat_sequence[0:x:1]) for x in range(0, n_out+1)])
 		n_start += 1
-	#########################################################################
+
 	# evaluate predictions days for each week
 	actuals = array(actuals)
 	actuals = actuals.reshape(-1, actuals.shape[1])
 	predictions = array(predictions)
+	predictions_ff = array(predictions_ff)
+	predictions_ff = predictions_ff.reshape(-1, predictions_ff.shape[1])
+	predictions_ff = predictions_ff[:, 1:] #takes columns 1 - n_out, since the above sequence appends column 0 before the cumulative
+
 	score, scores = evaluate_forecasts(actuals, predictions)
-	return score, scores, actuals, predictions, history
+	#return score, scores, actuals, predictions, history, predictions_ff
+	return scores
 
 
+# score a model, return None on failure
+def repeat_evaluate(data, config, n_train, n_repeats=3):
+	# convert config to a key
+	key = str(config)
+	# fit and evaluate the model n times
+	#scores = [walk_forward_validation(data, n_test, config) for _ in range(n_repeats)]
+	scores = [evaluate_model(data, n_train, config)  for _ in range(n_repeats)]
+	# summarize score from the repeats of each config
+	result = np.mean(scores)
+	print('> Model[%s] %.3f' % (key, result))
+	return (key, result)
 
-def process_data(ticker):
+# grid search configs
+def grid_search(data, cfg_list, n_train):
+	# evaluate configs
+	scores = [repeat_evaluate(data, cfg, n_train) for cfg in cfg_list]
+	# sort configs by error, asc
+	scores.sort(key=lambda tup: tup[1])
+	return scores
 
-	headers = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/headers.csv')
-	df = pd.read_csv (r'/home/ubuntu/stock_lstm/export_files/stock_history.csv', header=None, names=list(headers))
-	df.index.name = 'date'
+aapl = cl.parent_rnn('AAPL') #instantiate the object
+ds = aapl.process_data()
+ds = ds.drop(['day', 'ticker'], axis=1)
+#'volume_delta', 'prev_close_ch', 'prev_volume_ch',
+#			  'macds', 'macd', 'dma', 'macdh', 'ma200'], axis=1)
 
-	df.reset_index (inplace=True)		#temporarily reset the index to get the week day for OHE
-	df['date']= pd.to_datetime(df['date'])
-	df.drop_duplicates(['date', 'ticker', 'close'], inplace=True)
-	df [ 'day' ] = list (map (lambda x: datetime.weekday(x), df [ 'date' ])) #adds the numeric day for OHE
-	df.set_index('date', inplace=True) #set the index back to the date field
+ds_array = np.array(ds.iloc[:, :]) #included for the univariate solutions
+data = aapl.reshape_dataset(ds_array, 1)
 
-	# use pd.concat to join the new columns with your original dataframe
-	df = pd.concat([df,pd.get_dummies(df['day'],prefix='day',drop_first=True)],axis=1)
-
-	df_close = df[df['ticker'] == ticker].sort_index(ascending=True)
-
-	df_close = df_close.drop(['adj close', 'day', 'ticker',
-						'volume_delta', 'prev_close_ch', 'prev_volume_ch', 'macds', 'macd', 'dma', 'macdh', 'ma200'],
-					   axis=1)
-	df_close = df_close.sort_index(ascending=True, axis=0)
-
-	# Move the target variable to the end of the dataset so that it can be split into X and Y for Train and Test
-	cols = list(df_close.columns.values)  # Make a list of all of the columns in the df
-	cols.pop(cols.index('close'))  # Remove outcome from list
-	df_close = df_close[['close'] + cols]  # Create new dataframe with columns in correct order
-
-	df_close = df_close.dropna()
-
-	fig, axes = plt.subplots (figsize=(16, 8))
-		# Define the date format
-	axes.xaxis.set_major_locator (mdates.MonthLocator (interval=6))  # to display ticks every 3 months
-	axes.xaxis.set_major_formatter (mdates.DateFormatter ('%Y-%m'))  # to set how dates are displayed
-	axes.set_title (ticker)
-	axes.plot (df_close.index, df_close [ 'close' ], linewidth=3)
-	plt.show ()
-
-	return df_close
-
-dataset = process_data('AAPL')
-
-dataset_array = np.array(dataset)
-df = reshape_dataset(dataset_array, 1)
-df_diff = np.array(difference(df, interval=1))
-
-train, test = split_dataset(df, 0.8)
-train_diff, test_diff = split_dataset(df_diff, 0.8)
-
-#X, y = timeseries_to_supervised(dataset.values, 5, 5)
-#train, test = split_data(X, y, 0.9)
-# evaluate model and get scores
-n_input = 14
-n_out = 5
-score, scores, actuals, predictions, history = evaluate_model(train, test, n_input, n_out)
-# summarize scores
-summarize_scores('cnn', score, scores)
-# plot scores
-days = ['day1', 'day2', 'day3', 'day4', 'day5']
-plt.plot(days, scores, marker='o', label='cnn')
-plt.show()
+n_train = 0.8
 
 
-#In plotting the actuals v predictions below, it is possible that the model is
-#simply learning a persistance - that is, using the most recent value to make
-#the prediction.
-act = np.array(actuals)
-#day0_act = act[:, 0]
-day0_act = act.reshape(act.shape[0]*act.shape[1])
+cfg_list = aapl.model_configs()
 
-pred = np.array(predictions)
-day0_pred = pred.reshape(pred.shape[0]*pred.shape[1])
+scores = grid_search(data, cfg_list, n_train)
+print('done')
 
-for i in range(0, n_input):
-	plt.plot (act[:, i], color='blue')
-	plt.plot (pred[:, i], color='orange')
-	plt.title ("Actual v Prediction: Day " + str(i))
-	plt.show ()
-
-#Needs a bigger networks for example - more epochs + standardization - relu
-#is not working at all.
+#list top configs
+for cfg, error in scores[:5]:
+	print(cfg, error)

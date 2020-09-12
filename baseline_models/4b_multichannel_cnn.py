@@ -43,10 +43,6 @@ def summarize_scores(name, score, scores):
 	print('%s: [%.3f] %s' % (name, score, s_scores))
 
 
-#from keras import backend
-#backend.set_image_data_format('channels_last')
-
-
 	# train the model
 def build_model(train, test, config):
 
